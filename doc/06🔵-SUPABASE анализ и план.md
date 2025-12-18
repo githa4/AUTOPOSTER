@@ -14,7 +14,8 @@ Supabase уже используется как **Auth + Cloud Sync** и как 
 
 ### Клиент Supabase
 - `lib/supabaseClient.ts` — основной клиент + типы таблиц + `uploadPostImage()` (Storage).
-- `src/lib/supabaseClient.ts` — дубликат клиента (по коду совпадает с верхним).
+
+Примечание: дубликат клиента в `src/lib` удалён, используем один источник правды.
 
 ### Auth
 - `components/AuthModal.tsx` — `supabase.auth.signUp()` / `signInWithPassword()`.
@@ -24,7 +25,7 @@ Supabase уже используется как **Auth + Cloud Sync** и как 
 - `context/AppContext.tsx`:
   - `profiles.settings` (JSON) — синхронизация настроек пользователя.
   - `integrations` — загрузка/миграция из localStorage при логине.
-  - `posts/projects/templates` — вставка/обновление/удаление при действиях в UI.
+   - `posts/projects/templates` — hydrate при логине + вставка/обновление/удаление при действиях в UI.
 - `components/SettingsPage.tsx` — Cloud Viewer читает `profiles` и `integrations`.
 
 ### Storage
@@ -44,7 +45,7 @@ Supabase уже используется как **Auth + Cloud Sync** и как 
 - `REACT_APP_SUPABASE_ANON_KEY`
 
 ### Фоллбек на «встроенный» проект
-В `lib/supabaseClient.ts` и `src/lib/supabaseClient.ts` есть:
+В `lib/supabaseClient.ts` есть:
 - `PROVIDED_URL = https://...supabase.co`
 - `PROVIDED_ANON_KEY = ...`
 
@@ -125,16 +126,21 @@ Supabase уже используется как **Auth + Cloud Sync** и как 
 - `profiles.settings` (настройки пользователя)
 - `integrations` (с миграцией из localStorage, если в облаке пусто)
 
-### Записывается в Supabase, но НЕ загружается обратно при старте
-По текущему коду, `posts/projects/templates`:
-- записываются при действиях (insert/update/delete)
-- но при логине отсутствует «hydrate» этих сущностей из Supabase
+Также подтягиваются (hydrate при логине):
+- `posts` (история)
+- `projects` (папки)
+- `templates` (шаблоны)
 
-Следствие: на другом устройстве или после очистки localStorage пользователь может не увидеть историю/проекты/шаблоны, даже если они есть в Supabase.
+### Локально (fallback / кэш)
+В анонимном режиме данные продолжают жить в localStorage (и используются как fallback),
+а при логине — приоритет за Supabase.
 
 ---
 
 ## Проверка коннекта (практически)
+
+### Через CLI (самый быстрый smoke)
+`npm run check:supabase`
 
 ### В UI (самый надёжный быстрый smoke)
 1) Запусти `npm run dev`.
@@ -190,11 +196,10 @@ await supabase.from('profiles').select('id').limit(1)
 - добавить в репозиторий минимальный набор SQL/инструкций (schema + RLS/policies + storage/bucket настройки) как “источник правды”.
 
 ### P1-1) Дублирование клиента Supabase
-Есть 2 файла клиента (`lib/` и `src/lib/`).
-Риск: разъезд конфигов/типов, случайные импорты не того модуля.
+Ранее был дубликат (`lib/` и `src/lib/`). Сейчас оставлен один источник правды: `lib/supabaseClient.ts`.
 
 ### P1-2) `image_url` может содержать base64
-Сейчас в `posts.image_url` иногда пишется URL, иногда base64.
+Исторически в `posts.image_url` могли попасть base64-строки.
 Это плохо для:
 - размера таблицы,
 - производительности,
@@ -202,6 +207,8 @@ await supabase.from('profiles').select('id').limit(1)
 
 Рекомендация:
 - всегда грузить в Storage и хранить только публичный URL (или путь + signed URL выдавать через функцию).
+
+Примечание: в текущем коде вставка/обновление постов нормализованы так, чтобы base64 больше не писался в `image_url`.
 
 ---
 

@@ -81,6 +81,7 @@ export interface PostDraft {
   status: 'draft' | 'published' | 'scheduled'; 
   postCount: number; 
   stats?: {
+    postCount?: number;
     text: GenerationStats;
     image?: GenerationStats;
   };

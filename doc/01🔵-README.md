@@ -31,12 +31,11 @@
 ## Где что лежит
 
 - Документация (канонично): `doc/`
-- SQL/настройки Supabase:
-  - [supabase_schema.sql](../supabase_schema.sql)
-  - [supabase_setup.txt](../supabase_setup.txt)
-  - [supabase_storage.sql](../supabase_storage.sql)
-  - [supabase_storage.txt](../supabase_storage.txt)
-  - [supabase_schedule.txt](../supabase_schedule.txt)
+- Правила локализации (i18n) и анти-"коды": `doc/00🔵-СТАРТ ЗДЕСЬ ...` (раздел про i18n)
+- Supabase (анализ, риски, текущая схема по коду, план улучшений):
+  - [06🔵-SUPABASE анализ и план.md](06%F0%9F%94%B5-SUPABASE%20%D0%B0%D0%BD%D0%B0%D0%BB%D0%B8%D0%B7%20%D0%B8%20%D0%BF%D0%BB%D0%B0%D0%BD.md)
+
+Примечание: SQL-артефакты (schema/RLS/storage) в репозитории сейчас не зафиксированы.
 
 ---
 

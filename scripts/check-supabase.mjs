@@ -47,7 +47,6 @@ const tryLoadBuiltInSupabaseCreds = () => {
   // works out-of-the-box.
   const candidatePaths = [
     path.join(projectRoot, 'lib', 'supabaseClient.ts'),
-    path.join(projectRoot, 'src', 'lib', 'supabaseClient.ts'),
   ];
 
   for (const filePath of candidatePaths) {

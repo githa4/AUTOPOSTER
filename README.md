@@ -22,6 +22,10 @@
 
 `VITE_SUPABASE_ANON_KEY=...`
 
+Проверка коннекта Supabase (smoke):
+
+`npm run check:supabase`
+
 3) Запуск dev-сервера:
 
 `npm run dev`
@@ -36,6 +40,7 @@ Tailwind подключён без CDN и собирается через PostCS
 ## Скрипты
 
 - `npm run dev` — запуск в режиме разработки
+- `npm run check:supabase` — быстрый smoke-test Supabase (health/rest + лёгкий запрос)
 - `npm run build` — production build
 - `npm run preview` — предпросмотр production build
 

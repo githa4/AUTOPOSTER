@@ -28,6 +28,10 @@ const LS_API_WALLET_KEY = 'autopost_api_wallet';
 const LS_USER_CACHE = 'autopost_cached_user'; 
 const LS_FAV_MODELS = 'autopost_favorite_models';
 
+// Dev rule: while UX is being built, keep UI in RU to avoid spending time
+// translating every new string. Set to null when EN is ready.
+const UI_LANGUAGE_LOCK: UiLanguage | null = 'ru';
+
 const DEFAULT_EDITOR_STATE: EditorState = {
   sourceType: 'text',
   topic: '',
@@ -171,10 +175,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, []);
   
   // Default to RU as requested
-  const [uiLanguage, setUiLanguage] = useState<UiLanguage>(() => {
+  const [uiLanguage, setUiLanguageState] = useState<UiLanguage>(() => {
+      if (UI_LANGUAGE_LOCK) return UI_LANGUAGE_LOCK;
       const saved = localStorage.getItem(LS_LANG_KEY);
       return (saved as UiLanguage) || 'ru';
   });
+
+  const setUiLanguage = (lang: UiLanguage) => {
+      const effective = UI_LANGUAGE_LOCK ?? lang;
+      setUiLanguageState(effective);
+  };
 
   const [editorState, setEditorState] = useState<EditorState>(DEFAULT_EDITOR_STATE);
   const [dailyUsage, setDailyUsage] = useState<number>(0);
@@ -204,12 +214,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           createdAt: Date.now()
       };
       setApiKeys(prev => [...prev, newKey]);
-      showToast(translations[uiLanguage].btnSaveKey, "success");
+      showToast(t('btnSaveKey'), "success");
   };
 
   const updateApiKey = (id: string, name: string, key: string) => {
       setApiKeys(prev => prev.map(k => k.id === id ? { ...k, name, key } : k));
-      showToast(translations[uiLanguage].btnUpdateKey, "success");
+      showToast(t('btnUpdateKey'), "success");
   };
 
   const deleteApiKey = (id: string) => {
@@ -423,7 +433,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                         status: d.status,
                         scheduled_at: d.scheduledAt ? new Date(d.scheduledAt).toISOString() : null,
                         created_at: new Date(d.createdAt).toISOString(),
-                        stats: d.stats || null,
+                        stats: d.stats ? { ...d.stats, postCount: d.postCount } : { postCount: d.postCount },
                         title: d.title || null,
                     }));
 
@@ -463,7 +473,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => { safeSetItem(LS_API_WALLET_KEY, apiKeys); }, [apiKeys]);
   useEffect(() => { safeSetItem(LS_MODEL_KEY, modelConfig); }, [modelConfig]);
   useEffect(() => { safeSetItem(LS_FAV_MODELS, favoriteModelIds); }, [favoriteModelIds]);
-  useEffect(() => { localStorage.setItem(LS_LANG_KEY, uiLanguage); }, [uiLanguage]);
+  useEffect(() => {
+      const effective = UI_LANGUAGE_LOCK ?? uiLanguage;
+      localStorage.setItem(LS_LANG_KEY, effective);
+      if (effective !== uiLanguage) {
+          setUiLanguageState(effective);
+      }
+  }, [uiLanguage]);
 
   const signOut = async () => {
       await supabase.auth.signOut();
@@ -521,10 +537,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const addToHistory = async (draft: PostDraft) => {
     setHistory(prev => [draft, ...prev]);
     if (user) {
+        const stats = draft.stats
+            ? { ...draft.stats, postCount: draft.postCount }
+            : { postCount: draft.postCount };
+
         await supabase.from('posts').insert({
             id: draft.id,
             user_id: user.id,
             project_id: draft.folderId || null,
+            title: draft.title || null,
             topic: draft.topic,
             content: draft.content,
                         // Never store base64 in DB
@@ -532,7 +553,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             status: draft.status,
             scheduled_at: draft.scheduledAt ? new Date(draft.scheduledAt).toISOString() : null,
             created_at: new Date(draft.createdAt).toISOString(),
-            stats: draft.stats
+            stats,
         });
     }
   };
@@ -618,7 +639,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setCurrentView('main');
   };
 
-  const t = (key: TranslationKey): string => translations[uiLanguage][key] || key;
+    const t = (key: TranslationKey): string => {
+        const current = translations[uiLanguage] as Partial<Record<TranslationKey, string>>;
+        return current[key] ?? translations.ru[key] ?? key;
+    };
 
   return (
     <AppContext.Provider value={{
