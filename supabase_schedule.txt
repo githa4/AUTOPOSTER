@@ -1,0 +1,8 @@
+
+-- Добавляем колонку времени публикации
+ALTER TABLE public.posts 
+ADD COLUMN scheduled_at timestamp with time zone DEFAULT NULL;
+
+-- (Опционально) Индекс для быстрого поиска постов, готовых к публикации
+CREATE INDEX idx_posts_scheduled_at ON public.posts(scheduled_at) 
+WHERE status = 'scheduled';
