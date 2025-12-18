@@ -122,6 +122,7 @@ export const translations = {
     savedConfig: "Saved!",
     walletTitle: "API Wallet",
     walletDesc: "Manage your keys for this provider.",
+    walletKeysTitle: "Keys",
     btnAddKey: "Add Key",
     btnVerifyKey: "Test Key",
     btnSyncModels: "Sync",
@@ -180,6 +181,15 @@ export const translations = {
     toastImageGenerationFailed: "Image generation failed",
     toastImageUploaded: "Image uploaded",
     toastFetchModelsFailed: "Failed to fetch models: {message}",
+
+    toastIntegrationSaveFailed: "Failed to save integration",
+    toastIntegrationDeleteFailed: "Failed to delete integration",
+
+    errApiKeyMissing: "API key is missing",
+    integrationsNoActiveKey: "No active API key for this provider",
+    integrationsOpenWallet: "Open wallet",
+    integrationsNoModelsHint: "No models for this provider. Sync models or add a key.",
+    integrationsSyncModels: "Sync models",
 
     errorImageRegen: "Image regeneration error",
 
@@ -316,6 +326,7 @@ export const translations = {
     keyNameLabel: "Key name",
     keyNamePlaceholder: "My key...",
     keyValueLabel: "Key",
+    keyValuePlaceholder: "Paste key...",
     noKeysMessage: "No keys added yet.",
 
     lblProvider: "Provider",
@@ -523,6 +534,7 @@ export const translations = {
     savedConfig: "Сохранено!",
     walletTitle: "Кошелек API",
     walletDesc: "Управление вашими ключами для этого провайдера.",
+    walletKeysTitle: "Ключи",
     btnAddKey: "Добавить ключ",
     btnVerifyKey: "Тест связи",
     btnSyncModels: "Обновить",
@@ -581,6 +593,15 @@ export const translations = {
     toastImageGenerationFailed: "Не удалось сгенерировать изображение",
     toastImageUploaded: "Изображение загружено",
     toastFetchModelsFailed: "Не удалось получить список моделей: {message}",
+
+    toastIntegrationSaveFailed: "Не удалось сохранить интеграцию",
+    toastIntegrationDeleteFailed: "Не удалось удалить интеграцию",
+
+    errApiKeyMissing: "Не задан API-ключ",
+    integrationsNoActiveKey: "Нет активного API-ключа для этого провайдера",
+    integrationsOpenWallet: "Открыть кошелёк",
+    integrationsNoModelsHint: "Нет моделей для провайдера. Обновите список или добавьте ключ.",
+    integrationsSyncModels: "Обновить модели",
 
     errorImageRegen: "Ошибка перегенерации изображения",
 
@@ -717,6 +738,7 @@ export const translations = {
     keyNameLabel: "Название ключа",
     keyNamePlaceholder: "Мой ключ...",
     keyValueLabel: "Ключ",
+    keyValuePlaceholder: "Вставьте ключ...",
     noKeysMessage: "Ключей пока нет. Нажмите «Добавить ключ».",
 
     lblProvider: "Провайдер",

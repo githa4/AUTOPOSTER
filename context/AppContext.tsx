@@ -230,6 +230,45 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 if (s.apiKeys) setApiKeys(s.apiKeys);
                 if (s.modelConfig) setModelConfig(prev => ({...prev, ...s.modelConfig}));
                 if (s.favorites) setFavoriteModelIds(s.favorites);
+                if (s.telegramConfig) setTelegramConfig(s.telegramConfig);
+            }
+
+            const { data: dbIntegrations, error: integrationsError } = await supabase
+                .from('integrations')
+                .select('id, provider, name, credentials, is_active')
+                .eq('user_id', user.id);
+
+            if (integrationsError) {
+                console.error('Failed to load integrations from Supabase', integrationsError);
+            } else if (Array.isArray(dbIntegrations)) {
+                if (dbIntegrations.length > 0) {
+                    setIntegrations(
+                        dbIntegrations.map((row: any) => ({
+                            id: row.id,
+                            provider: row.provider,
+                            name: row.name,
+                            credentials: row.credentials || {},
+                            isActive: Boolean(row.is_active),
+                        }))
+                    );
+                } else if (integrations.length > 0) {
+                    const rowsToInsert = integrations.map((i) => ({
+                        id: i.id,
+                        user_id: user.id,
+                        provider: i.provider,
+                        name: i.name,
+                        credentials: i.credentials,
+                        is_active: i.isActive,
+                    }));
+
+                    const { error: insertError } = await supabase
+                        .from('integrations')
+                        .insert(rowsToInsert);
+
+                    if (insertError) {
+                        console.error('Failed to migrate local integrations to Supabase', insertError);
+                    }
+                }
             }
         } catch (e) { console.error("Sync Error", e); }
         finally { setIsSettingsLoaded(true); }
@@ -241,12 +280,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (!user || !isSettingsLoaded) return;
       const timer = setTimeout(async () => {
           await supabase.from('profiles').update({
-              settings: { apiKeys, modelConfig, favorites: favoriteModelIds },
+              settings: { apiKeys, modelConfig, favorites: favoriteModelIds, telegramConfig },
               updated_at: new Date().toISOString()
           }).eq('id', user.id);
       }, 2000);
       return () => clearTimeout(timer);
-  }, [apiKeys, modelConfig, favoriteModelIds, user, isSettingsLoaded]);
+  }, [apiKeys, modelConfig, favoriteModelIds, telegramConfig, user, isSettingsLoaded]);
+
+  useEffect(() => { safeSetItem(LS_TG_KEY, telegramConfig); }, [telegramConfig]);
+  useEffect(() => { safeSetItem(LS_INTEGRATIONS_KEY, integrations); }, [integrations]);
 
   useEffect(() => { safeSetItem(LS_API_WALLET_KEY, apiKeys); }, [apiKeys]);
   useEffect(() => { safeSetItem(LS_MODEL_KEY, modelConfig); }, [modelConfig]);
@@ -266,23 +308,44 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const addIntegration = async (integration: Omit<Integration, 'id'>) => {
-      const tempId = crypto.randomUUID();
-      const newInt = { ...integration, id: tempId };
+      const id = crypto.randomUUID();
+      const newInt = { ...integration, id };
       setIntegrations(prev => [...prev, newInt]);
-      if (user) {
-          await supabase.from('integrations').insert({
-              user_id: user.id,
-              provider: integration.provider,
-              name: integration.name,
-              credentials: integration.credentials,
-              is_active: integration.isActive
-          });
+
+      if (!user) return;
+
+      const { error } = await supabase.from('integrations').insert({
+          id,
+          user_id: user.id,
+          provider: integration.provider,
+          name: integration.name,
+          credentials: integration.credentials,
+          is_active: integration.isActive,
+      });
+
+      if (error) {
+          console.error('Failed to save integration to Supabase', error);
+          setIntegrations(prev => prev.filter(i => i.id !== id));
+          showToast(t('toastIntegrationSaveFailed'), 'error');
       }
   };
 
   const removeIntegration = async (id: string) => {
+      const snapshot = integrations;
       setIntegrations(prev => prev.filter(i => i.id !== id));
-      if (user) await supabase.from('integrations').delete().eq('id', id);
+      if (!user) return;
+
+      const { error } = await supabase
+          .from('integrations')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', user.id);
+
+      if (error) {
+          console.error('Failed to delete integration from Supabase', error);
+          setIntegrations(snapshot);
+          showToast(t('toastIntegrationDeleteFailed'), 'error');
+      }
   };
 
   const addToHistory = async (draft: PostDraft) => {

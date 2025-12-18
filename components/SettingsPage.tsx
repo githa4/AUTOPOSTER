@@ -70,7 +70,7 @@ const ApiWallet = ({ provider, keys, onAdd, onUpdate, onDelete, onSetDefault, on
     return (
         <div className="space-y-4">
             <div className="flex justify-between items-center mb-2">
-                <h4 className="text-[10px] font-bold text-[#666] uppercase tracking-wider">{t('quotaTitle')} ({providerKeys.length})</h4>
+                <h4 className="text-[10px] font-bold text-[#666] uppercase tracking-wider">{t('walletKeysTitle')} ({providerKeys.length})</h4>
                 {!showAdd && (
                     <button 
                         onClick={() => setShowAdd(true)}
@@ -100,7 +100,7 @@ const ApiWallet = ({ provider, keys, onAdd, onUpdate, onDelete, onSetDefault, on
                                 value={key}
                                 onChange={e => setKey(e.target.value)}
                                 className="w-full bg-[#252526] border border-[#3e3e42] rounded px-3 py-2 text-sm text-white outline-none focus:border-[#007acc]"
-                                placeholder="sk-..."
+                                placeholder={t('keyValuePlaceholder')}
                             />
                         </div>
                     </div>
@@ -279,7 +279,10 @@ const CloudInspectorModal = ({ isOpen, onClose, userId }: { isOpen: boolean, onC
             const { data: profile, error: profError } = await supabase.from('profiles').select('settings, updated_at').eq('id', userId).single();
             if (profError) throw profError;
             setProfileData(profile);
-            const { data: integrations, error: intError } = await supabase.from('integrations').select('*');
+            const { data: integrations, error: intError } = await supabase
+                .from('integrations')
+                .select('*')
+                .eq('user_id', userId);
             if (intError) throw intError;
             setIntegrationsData(integrations);
         } catch (e: any) { setError(e.message); } finally { setLoading(false); }
@@ -317,8 +320,27 @@ const CloudInspectorModal = ({ isOpen, onClose, userId }: { isOpen: boolean, onC
     );
 };
 
-const ModelAssignmentRow = ({ title, description, icon: Icon, iconColor, provider, setProvider, providerOptions, model, setModel, modelOptions, type, availableModels, getKeys, onOpenManager, onAddCustomModel }: any) => {
-    const { favoriteModelIds, t, apiConfig } = useAppContext();
+const ModelAssignmentRow = ({
+    title,
+    description,
+    icon: Icon,
+    iconColor,
+    provider,
+    setProvider,
+    getFirstModelId,
+    providerOptions,
+    model,
+    setModel,
+    modelOptions,
+    type,
+    availableModels,
+    getKeys,
+    onOpenWallet,
+    onSyncModels,
+    onOpenManager,
+    onAddCustomModel,
+}: any) => {
+    const { favoriteModelIds, t } = useAppContext();
     const sortedOptions = useMemo(() => {
         return [...modelOptions].sort((a, b) => {
             const aFav = favoriteModelIds.includes(a.id);
@@ -328,6 +350,10 @@ const ModelAssignmentRow = ({ title, description, icon: Icon, iconColor, provide
             return 0;
         });
     }, [modelOptions, favoriteModelIds]);
+
+    const keys = getKeys?.() || {};
+    const activeKey = (keys as any)[provider] || '';
+    const hasActiveKey = Boolean(activeKey);
 
     const [customIdInput, setCustomIdInput] = useState('');
 
@@ -349,13 +375,57 @@ const ModelAssignmentRow = ({ title, description, icon: Icon, iconColor, provide
                     <div>
                         <label className="text-[10px] text-[#666] font-bold uppercase mb-1.5 block">{t('lblProvider')}</label>
                         <div className="relative">
-                            <select value={provider} onChange={e => { setProvider(e.target.value); setModel(''); }} className="w-full bg-[#1e1e1e] text-xs text-white border border-[#3e3e42] rounded px-3 py-2.5 outline-none appearance-none shadow-sm transition-colors">{providerOptions.map((opt: any) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}</select>
+                            <select
+                                value={provider}
+                                onChange={e => {
+                                    const nextProvider = e.target.value;
+                                    setProvider(nextProvider);
+                                    const first = getFirstModelId?.(nextProvider) || '';
+                                    setModel(first);
+                                }}
+                                className="w-full bg-[#1e1e1e] text-xs text-white border border-[#3e3e42] rounded px-3 py-2.5 outline-none appearance-none shadow-sm transition-colors"
+                            >
+                                {providerOptions.map((opt: any) => (
+                                    <option key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                    </option>
+                                ))}
+                            </select>
                             <ChevronDown className="absolute right-3 top-3 w-3 h-3 text-[#666] pointer-events-none" />
                         </div>
+                        {!hasActiveKey && type !== 'image' && (
+                            <div className="mt-2 rounded border border-yellow-500/20 bg-yellow-900/10 px-3 py-2 text-[10px] text-yellow-200">
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="font-mono">{t('integrationsNoActiveKey')}</span>
+                                    <button
+                                        onClick={() => onOpenWallet?.(provider)}
+                                        className="text-[10px] font-bold text-[#54a0f8] hover:underline"
+                                    >
+                                        {t('integrationsOpenWallet')}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                     <div>
                         <label className="text-[10px] text-[#666] font-bold uppercase mb-1.5 block flex justify-between"><span>{t('lblModel')}</span><span onClick={onOpenManager} className="text-[9px] text-[#007acc] hover:underline cursor-pointer flex items-center gap-1"><Settings className="w-3 h-3" /> {t('refresh').split(' ')[0]}</span></label>
                         <div className="flex gap-2"><div className="flex-1"><SearchableSelect value={model} onChange={setModel} options={sortedOptions} placeholder={t('selectModel')} favorites={favoriteModelIds} /></div></div>
+                        {sortedOptions.length === 0 && (
+                            <div className="mt-2 rounded border border-[#333] bg-[#1e1e1e] px-3 py-2 text-[10px] text-[#aaa]">
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="font-mono">{t('integrationsNoModelsHint')}</span>
+                                    <button
+                                        onClick={() => {
+                                            if (!hasActiveKey) onOpenWallet?.(provider);
+                                            else onSyncModels?.(provider);
+                                        }}
+                                        className="text-[10px] font-bold text-[#54a0f8] hover:underline"
+                                    >
+                                        {hasActiveKey ? t('integrationsSyncModels') : t('integrationsOpenWallet')}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                         {onAddCustomModel && provider === 'replicate' && (<div className="mt-2 flex items-center gap-2"><input value={customIdInput} onChange={(e) => setCustomIdInput(e.target.value)} placeholder="Custom ID" className="flex-1 bg-[#1e1e1e] border border-[#3e3e42] rounded px-2 py-1.5 text-[10px] text-white outline-none focus:border-[#007acc]" onKeyDown={(e) => e.key === 'Enter' && handleAddClick()} /><button onClick={handleAddClick} disabled={!customIdInput.trim()} className="bg-[#3e3e42] hover:bg-[#4e4e55] text-white p-1.5 rounded disabled:opacity-50 transition-colors"><Plus className="w-3.5 h-3.5" /></button></div>)}
                     </div>
                 </div>
@@ -377,7 +447,17 @@ const ModelTestControl = ({ provider, modelId, type, getKeys, allModels, fallbac
         setTesting(true); setResult(null);
         const keys = getKeys();
         let activeKey = (keys as any)[provider] || '';
-        if (!activeKey) { setResult({ success: false, model: modelId, latency: 0, timestamp: Date.now(), message: t('authError') }); setTesting(false); return; }
+        if (!activeKey) {
+            setResult({
+                success: false,
+                model: modelId,
+                latency: 0,
+                timestamp: Date.now(),
+                message: t('errApiKeyMissing'),
+            });
+            setTesting(false);
+            return;
+        }
         const start = Date.now();
         try {
             let tokens = 0; let outputContent = '';
@@ -426,6 +506,21 @@ export const SettingsPage: React.FC = () => {
   } = useAppContext();
   
   const [activeTab, setActiveTab] = useState<SettingsTab>('gemini');
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const getDefaultKeyForProvider = (p: ApiProvider): string => {
+      return (
+          apiKeys.find(k => k.provider === p && k.isDefault)?.key ||
+          apiKeys.find(k => k.provider === p)?.key ||
+          ''
+      );
+  };
+
+  const openWalletForProvider = (p: ApiProvider) => {
+      setActiveTab(p as SettingsTab);
+      setFetchStatus(null);
+      scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   // Model Assignments (Form local state)
   const [textModel, setTextModel] = useState('');
@@ -449,7 +544,7 @@ export const SettingsPage: React.FC = () => {
 
   const runKeyTest = async (provider: ApiProvider, key: string) => {
       if (!key) {
-          showToast(t('authError'), 'warning');
+          showToast(t('errApiKeyMissing'), 'warning');
           return;
       }
       
@@ -498,7 +593,7 @@ export const SettingsPage: React.FC = () => {
   };
 
   const handleFetchModels = async (p: ApiProvider, key: string) => {
-    if (!key) { showToast(t('authError'), 'warning'); return; }
+        if (!key) { showToast(t('errApiKeyMissing'), 'warning'); return; }
     setIsFetchingModels(true); setFetchStatus(null); 
     try {
       let newModels: Model[] = [];
@@ -510,6 +605,18 @@ export const SettingsPage: React.FC = () => {
           newModels = await getAvailableModels({ ...apiConfig, [p === 'kie' ? 'kieKey' : (p === 'openrouter' ? 'openRouterKey' : 'geminiKey')]: key }, p);
       }
       setAvailableModels((prev) => { const filtered = prev.filter(m => m.provider !== p); return [...filtered, ...newModels]; });
+
+            // Autopick first valid model for roles that depend on provider p
+            if (p !== 'replicate' && newModels.length > 0) {
+                    const firstId = newModels[0]?.id || '';
+                    if (textProvider === p && !newModels.some(m => m.id === textModel)) {
+                            setTextModel(firstId);
+                    }
+                    if (youtubeProvider === p && !newModels.some(m => m.id === youtubeModel)) {
+                            setYoutubeModel(firstId);
+                    }
+            }
+
       setFetchStatus({ provider: p, count: newModels.length, success: newModels.length > 0, timestamp: Date.now(), isFallback: p === 'kie' });
     } catch (e: any) {
       setFetchStatus({ provider: p, count: 0, success: false, message: e.message, timestamp: Date.now() });
@@ -538,8 +645,12 @@ export const SettingsPage: React.FC = () => {
   const getFilteredImageModels = (provider: string) => provider === 'gemini' ? GEMINI_IMAGE_MODELS : [...REPLICATE_IMAGE_MODELS, ...customReplicateModels];
 
   const NavItem = ({ id, icon: Icon, label, colorClass }: any) => (
-      <button onClick={() => { setActiveTab(id); setFetchStatus(null); }} className={`w-full text-left p-3 rounded-md mb-2 flex items-center gap-3 transition-all border ${activeTab === id ? `bg-[#37373d] text-white border-l-4 border-l-${colorClass} border-t-transparent border-r-transparent border-b-transparent shadow-sm` : 'text-[#969696] border-transparent hover:bg-[#2a2d2e] hover:text-[#e0e0e0]'}`}>
-         <Icon className={`w-5 h-5 ${activeTab === id ? colorClass : ''}`} /><span className="text-xs font-bold uppercase tracking-wider">{label}</span>
+      <button
+          onClick={() => { setActiveTab(id); setFetchStatus(null); }}
+          className={`w-full text-left p-3 rounded-md mb-2 flex items-center gap-3 transition-all border ${activeTab === id ? `bg-[#37373d] text-white border-l-4 ${String(colorClass || '').startsWith('text-') ? String(colorClass).replace('text-', 'border-') : ''} border-t-transparent border-r-transparent border-b-transparent shadow-sm` : 'text-[#969696] border-transparent hover:bg-[#2a2d2e] hover:text-[#e0e0e0]'}`}
+      >
+         <Icon className={`w-5 h-5 ${activeTab === id ? colorClass : ''}`} />
+         <span className="text-xs font-bold uppercase tracking-wider">{label}</span>
       </button>
   );
 
@@ -565,7 +676,7 @@ export const SettingsPage: React.FC = () => {
             </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar" ref={scrollRef}>
             <div className="max-w-5xl mx-auto flex flex-col gap-8 pb-20">
                 <div className="min-h-[200px]">
                     {activeTab !== 'telegram' && (
@@ -622,9 +733,79 @@ export const SettingsPage: React.FC = () => {
                 <div className="mt-8 border-t border-[#3e3e42] pt-8">
                     <div className="flex items-center justify-between mb-6"><h3 className="text-sm font-bold text-[#858585] uppercase tracking-widest flex items-center gap-2"><LayoutGrid className="w-4 h-4" /> {t('lblGlobalAssignments')}</h3></div>
                     <div className="flex flex-col gap-6">
-                        <ModelAssignmentRow title={t('assignText')} description={t('providerGeminiDesc')} icon={Brain} iconColor="text-blue-400" provider={textProvider} setProvider={setTextProvider} providerOptions={[{ value: 'gemini', label: 'Google Gemini' }, { value: 'kie', label: 'Kie.ai' }, { value: 'openrouter', label: 'OpenRouter' }]} model={textModel} setModel={setTextModel} modelOptions={getModelsByProvider(textProvider)} type="text" availableModels={availableModels} getKeys={() => ({ gemini: apiKeys.find(k => k.provider === 'gemini' && k.isDefault)?.key, kie: apiKeys.find(k => k.provider === 'kie' && k.isDefault)?.key, openrouter: apiKeys.find(k => k.provider === 'openrouter' && k.isDefault)?.key, replicate: apiKeys.find(k => k.provider === 'replicate' && k.isDefault)?.key })} onOpenManager={() => setShowModelManager(true)} />
-                        <ModelAssignmentRow title={t('assignYoutube')} description={t('providerKieDesc')} icon={Youtube} iconColor="text-red-500" provider={youtubeProvider} setProvider={setYoutubeProvider} providerOptions={[{ value: 'gemini', label: 'Google Gemini' }, { value: 'kie', label: 'Kie.ai' }, { value: 'openrouter', label: 'OpenRouter' }]} model={youtubeModel} setModel={setYoutubeModel} modelOptions={getModelsByProvider(youtubeProvider)} type="text" availableModels={availableModels} getKeys={() => ({ gemini: apiKeys.find(k => k.provider === 'gemini' && k.isDefault)?.key, kie: apiKeys.find(k => k.provider === 'kie' && k.isDefault)?.key, openrouter: apiKeys.find(k => k.provider === 'openrouter' && k.isDefault)?.key, replicate: apiKeys.find(k => k.provider === 'replicate' && k.isDefault)?.key })} onOpenManager={() => setShowModelManager(true)} />
-                        <ModelAssignmentRow title={t('assignImage')} description={t('providerReplicateDesc')} icon={ImageIcon} iconColor="text-purple-400" provider={imageProvider} setProvider={setImageProvider} providerOptions={[{ value: 'gemini', label: 'Google Gemini' }, { value: 'replicate', label: 'Replicate' }]} model={imageModel} setModel={setImageModel} modelOptions={getFilteredImageModels(imageProvider)} type="image" availableModels={availableModels} getKeys={() => ({ gemini: apiKeys.find(k => k.provider === 'gemini' && k.isDefault)?.key, kie: apiKeys.find(k => k.provider === 'kie' && k.isDefault)?.key, openrouter: apiKeys.find(k => k.provider === 'openrouter' && k.isDefault)?.key, replicate: apiKeys.find(k => k.provider === 'replicate' && k.isDefault)?.key })} onAddCustomModel={handleAddCustomModel} onOpenManager={() => setShowModelManager(true)} />
+                        <ModelAssignmentRow
+                            title={t('assignText')}
+                            description={t('providerGeminiDesc')}
+                            icon={Brain}
+                            iconColor="text-blue-400"
+                            provider={textProvider}
+                            setProvider={setTextProvider}
+                            getFirstModelId={(p: ApiProvider) => getModelsByProvider(p)[0]?.id || ''}
+                            providerOptions={[{ value: 'gemini', label: 'Google Gemini' }, { value: 'kie', label: 'Kie.ai' }, { value: 'openrouter', label: 'OpenRouter' }]}
+                            model={textModel}
+                            setModel={setTextModel}
+                            modelOptions={getModelsByProvider(textProvider)}
+                            type="text"
+                            availableModels={availableModels}
+                            getKeys={() => ({
+                                gemini: getDefaultKeyForProvider('gemini'),
+                                kie: getDefaultKeyForProvider('kie'),
+                                openrouter: getDefaultKeyForProvider('openrouter'),
+                                replicate: getDefaultKeyForProvider('replicate'),
+                            })}
+                            onOpenWallet={(p: ApiProvider) => openWalletForProvider(p)}
+                            onSyncModels={(p: ApiProvider) => handleFetchModels(p, getDefaultKeyForProvider(p))}
+                            onOpenManager={() => setShowModelManager(true)}
+                        />
+                        <ModelAssignmentRow
+                            title={t('assignYoutube')}
+                            description={t('providerKieDesc')}
+                            icon={Youtube}
+                            iconColor="text-red-500"
+                            provider={youtubeProvider}
+                            setProvider={setYoutubeProvider}
+                            getFirstModelId={(p: ApiProvider) => getModelsByProvider(p)[0]?.id || ''}
+                            providerOptions={[{ value: 'gemini', label: 'Google Gemini' }, { value: 'kie', label: 'Kie.ai' }, { value: 'openrouter', label: 'OpenRouter' }]}
+                            model={youtubeModel}
+                            setModel={setYoutubeModel}
+                            modelOptions={getModelsByProvider(youtubeProvider)}
+                            type="text"
+                            availableModels={availableModels}
+                            getKeys={() => ({
+                                gemini: getDefaultKeyForProvider('gemini'),
+                                kie: getDefaultKeyForProvider('kie'),
+                                openrouter: getDefaultKeyForProvider('openrouter'),
+                                replicate: getDefaultKeyForProvider('replicate'),
+                            })}
+                            onOpenWallet={(p: ApiProvider) => openWalletForProvider(p)}
+                            onSyncModels={(p: ApiProvider) => handleFetchModels(p, getDefaultKeyForProvider(p))}
+                            onOpenManager={() => setShowModelManager(true)}
+                        />
+                        <ModelAssignmentRow
+                            title={t('assignImage')}
+                            description={t('providerReplicateDesc')}
+                            icon={ImageIcon}
+                            iconColor="text-purple-400"
+                            provider={imageProvider}
+                            setProvider={setImageProvider}
+                            getFirstModelId={(p: ImageProvider) => getFilteredImageModels(p)[0]?.id || ''}
+                            providerOptions={[{ value: 'gemini', label: 'Google Gemini' }, { value: 'replicate', label: 'Replicate' }]}
+                            model={imageModel}
+                            setModel={setImageModel}
+                            modelOptions={getFilteredImageModels(imageProvider)}
+                            type="image"
+                            availableModels={availableModels}
+                            getKeys={() => ({
+                                gemini: getDefaultKeyForProvider('gemini'),
+                                kie: getDefaultKeyForProvider('kie'),
+                                openrouter: getDefaultKeyForProvider('openrouter'),
+                                replicate: getDefaultKeyForProvider('replicate'),
+                            })}
+                            onOpenWallet={(p: ApiProvider) => openWalletForProvider(p)}
+                            onSyncModels={(p: ApiProvider) => handleFetchModels(p, getDefaultKeyForProvider(p))}
+                            onAddCustomModel={handleAddCustomModel}
+                            onOpenManager={() => setShowModelManager(true)}
+                        />
                     </div>
                     <div className="mt-6"><label className="text-xs font-bold text-[#ccc] mb-2 block flex items-center gap-2"><Terminal className="w-3.5 h-3.5" />{t('systemPromptLabel')}</label><textarea value={systemPrompt} onChange={e => setSystemPrompt(e.target.value)} className="w-full bg-[#252526] border border-[#3e3e42] rounded p-3 text-xs text-[#ccc] font-mono outline-none focus:border-[#007acc] h-24 resize-none" placeholder={t('systemPromptPlaceholder')} /></div>
                 </div>
