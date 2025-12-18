@@ -127,7 +127,16 @@ export const usePostGeneration = () => {
         };
 
         try {
-            const systemPromptToUse = params.customSystemPrompt || modelConfig.systemPrompt;
+            const baseTextSystemPrompt =
+                modelConfig.textSystemPrompt || modelConfig.systemPrompt || '';
+
+            let effectiveTextSystemPrompt =
+                params.customSystemPrompt || baseTextSystemPrompt;
+
+            if (params.sourceType === 'youtube' && modelConfig.youtubeSystemPrompt) {
+                effectiveTextSystemPrompt = `${effectiveTextSystemPrompt}\n\nYouTube Context: ${modelConfig.youtubeSystemPrompt}`;
+            }
+
             const activeTextModel = params.sourceType === 'youtube' ? modelConfig.youtubeModel : modelConfig.textModel;
             const activeProvider = params.sourceType === 'youtube' ? modelConfig.youtubeProvider : modelConfig.textProvider;
 
@@ -137,6 +146,7 @@ export const usePostGeneration = () => {
             // 1. Generate Text
             if (params.isTextEnabled) {
                 setLoadingState(LoadingState.GENERATING_TEXT);
+
                 content = await generatePostContent(
                     params.topic, 
                     params.language, 
@@ -144,13 +154,15 @@ export const usePostGeneration = () => {
                     apiConfig, 
                     params.tone, 
                     params.imageStyle, 
-                    systemPromptToUse,
+                    effectiveTextSystemPrompt,
                     params.postCount, 
                     params.sourceType, 
                     params.postMode,
                     params.includeLongRead,
                     activeProvider,
-                    abortController.current.signal
+                    abortController.current.signal,
+                    modelConfig.temperature,
+                    modelConfig.maxTokens
                 );
                 
                 combinedText = content.posts.map((p: any) => 
@@ -176,8 +188,8 @@ export const usePostGeneration = () => {
                 
                 if (promptToUse) {
                     const imgResult = modelConfig.imageProvider === 'replicate' 
-                        ? await generateReplicateImage(promptToUse, modelConfig.imageModel, apiConfig, params.imageStyle, abortController.current.signal)
-                        : await generatePostImage(promptToUse, modelConfig.imageModel, apiConfig, params.imageStyle, abortController.current.signal);
+                        ? await generateReplicateImage(promptToUse, modelConfig.imageModel, apiConfig, params.imageStyle, abortController.current.signal, modelConfig.imageSystemPrompt)
+                        : await generatePostImage(promptToUse, modelConfig.imageModel, apiConfig, params.imageStyle, abortController.current.signal, modelConfig.imageSystemPrompt);
                     
                     // 2.1 Auto Upload
                     if (user && imgResult.base64) {
@@ -224,7 +236,7 @@ export const usePostGeneration = () => {
                 imageUrl: result.generatedImage?.startsWith('http') ? result.generatedImage : null,
                 imageBase64: result.generatedImage?.startsWith('http') ? null : result.generatedImage,
                 imagePrompt: content?.imagePrompt || params.currentImagePrompt || (params.isImageEnabled ? params.topic : ''),
-                customSystemPrompt: systemPromptToUse, 
+                customSystemPrompt: effectiveTextSystemPrompt,
                 createdAt: Date.now(),
                 scheduledAt: params.scheduledAt ? new Date(params.scheduledAt).getTime() : null,
                 status: params.scheduledAt ? 'scheduled' : 'draft',
@@ -268,8 +280,22 @@ export const usePostGeneration = () => {
         
         try {
             const imgResult = modelConfig.imageProvider === 'replicate' 
-                ? await generateReplicateImage(promptToUse, modelConfig.imageModel, apiConfig, style, abortController.current.signal)
-                : await generatePostImage(promptToUse, modelConfig.imageModel, apiConfig, style, abortController.current.signal);
+                ? await generateReplicateImage(
+                      promptToUse,
+                      modelConfig.imageModel,
+                      apiConfig,
+                      style,
+                      abortController.current.signal,
+                      modelConfig.imageSystemPrompt
+                  )
+                : await generatePostImage(
+                      promptToUse,
+                      modelConfig.imageModel,
+                      apiConfig,
+                      style,
+                      abortController.current.signal,
+                      modelConfig.imageSystemPrompt
+                  );
 
             let finalImage = imgResult.base64;
 

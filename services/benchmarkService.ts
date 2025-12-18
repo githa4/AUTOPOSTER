@@ -10,6 +10,8 @@ export interface BenchmarkEntry {
     isProprietary: boolean;
 }
 
+export type BenchmarkMode = 'arena-snapshot' | 'arena-snapshot+openrouter';
+
 // Manual snapshot of LMSYS Leaderboard (Approximation for Feb 2025 based on current trends)
 // Source: https://lmarena.ai (Simulated latest snapshot)
 const TEXT_LEADERBOARD: BenchmarkEntry[] = [
@@ -35,15 +37,31 @@ const CODE_LEADERBOARD: BenchmarkEntry[] = [
     { rank: 7, model: "claude-sonnet-4-5", score: 1395, votes: 6974, organization: "Anthropic", license: "Proprietary", isProprietary: true },
 ];
 
-export const fetchBenchmarks = async (category: 'text' | 'code'): Promise<{ data: BenchmarkEntry[], timestamp: number }> => {
+export const fetchBenchmarks = async (
+    category: 'text' | 'code',
+    mode: BenchmarkMode = 'arena-snapshot',
+): Promise<{ data: BenchmarkEntry[], timestamp: number }> => {
     // Simulate network delay to make it feel like a real fetch
     await new Promise(resolve => setTimeout(resolve, 600));
     
     // In a real production app with a backend, we would fetch from our own endpoint here
     // which scrapes or proxies LMSYS. Since we are client-side only, we use a snapshot.
     
+    const base = category === 'text' ? TEXT_LEADERBOARD : CODE_LEADERBOARD;
+
+    if (mode === 'arena-snapshot+openrouter') {
+        const { enrichBenchmarksWithOpenRouter } = await import(
+            './benchmarks/openRouterEnrichment'
+        );
+
+        return {
+            data: await enrichBenchmarksWithOpenRouter(base),
+            timestamp: Date.now() - 3600000 * 8 // 8 hours ago
+        };
+    }
+
     return {
-        data: category === 'text' ? TEXT_LEADERBOARD : CODE_LEADERBOARD,
+        data: base,
         timestamp: Date.now() - 3600000 * 8 // 8 hours ago
     };
 };

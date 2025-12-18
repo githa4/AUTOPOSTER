@@ -27,7 +27,7 @@ const REPLICATE_IMAGE_MODELS = [
     { id: 'ai-forever/kandinsky-2.2', name: 'Kandinsky 2.2', description: "Russian-native artistic model." },
 ];
 
-type SettingsTab = 'gemini' | 'kie' | 'openrouter' | 'replicate' | 'telegram';
+type SettingsTab = 'gemini' | 'kie' | 'openrouter' | 'replicate' | 'prompts' | 'telegram';
 
 // --- API WALLET COMPONENT ---
 const ApiWallet = ({ provider, keys, onAdd, onUpdate, onDelete, onSetDefault, onFetch }: { 
@@ -529,7 +529,9 @@ export const SettingsPage: React.FC = () => {
   const [youtubeProvider, setYoutubeProvider] = useState<ApiProvider>('gemini');
   const [imageModel, setImageModel] = useState('');
   const [imageProvider, setImageProvider] = useState<ImageProvider>('gemini');
-  const [systemPrompt, setSystemPrompt] = useState('');
+    const [textSystemPrompt, setTextSystemPrompt] = useState('');
+    const [imageSystemPrompt, setImageSystemPrompt] = useState('');
+    const [youtubeSystemPrompt, setYoutubeSystemPrompt] = useState('');
   
   const [isFetchingModels, setIsFetchingModels] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle');
@@ -583,7 +585,9 @@ export const SettingsPage: React.FC = () => {
     setYoutubeProvider(modelConfig.youtubeProvider || 'gemini');
     setImageProvider(modelConfig.imageProvider || 'gemini');
     setImageModel(modelConfig.imageModel || '');
-    setSystemPrompt(modelConfig.systemPrompt || '');
+        setTextSystemPrompt(modelConfig.textSystemPrompt || modelConfig.systemPrompt || '');
+        setImageSystemPrompt(modelConfig.imageSystemPrompt || '');
+        setYoutubeSystemPrompt(modelConfig.youtubeSystemPrompt || '');
   }, [modelConfig]);
 
   const runTelegramTest = async (int?: Integration) => {
@@ -624,7 +628,21 @@ export const SettingsPage: React.FC = () => {
   };
 
   const handleSaveGlobal = () => {
-    setModelConfig({ textModel, textProvider, youtubeModel, youtubeProvider, imageProvider, imageModel, systemPrompt });
+        setModelConfig({
+                textModel,
+                textProvider,
+                youtubeModel,
+                youtubeProvider,
+                imageProvider,
+                imageModel,
+                textSystemPrompt,
+                imageSystemPrompt,
+                youtubeSystemPrompt,
+                temperature: modelConfig.temperature,
+                maxTokens: modelConfig.maxTokens,
+                // Keep legacy field in sync so older data/migrations stay safe
+                systemPrompt: textSystemPrompt,
+        });
     setSaveStatus('saved');
     setTimeout(() => setSaveStatus('idle'), 1500);
   };
@@ -663,6 +681,7 @@ export const SettingsPage: React.FC = () => {
               <NavItem id="kie" icon={HardDrive} label={t('providerKieTitle')} colorClass="text-green-400" />
               <NavItem id="openrouter" icon={Server} label={t('providerOpenRouterTitle')} colorClass="text-purple-400" />
               <NavItem id="replicate" icon={Palette} label={t('providerReplicateTitle')} colorClass="text-orange-400" />
+              <NavItem id="prompts" icon={Terminal} label={t('navPrompts')} colorClass="text-yellow-400" />
               <div className="h-px bg-[#3e3e42] my-4 mx-2"></div>
               <NavItem id="telegram" icon={Share2} label={t('providerTelegramTitle')} colorClass="text-sky-400" />
           </div>
@@ -679,7 +698,7 @@ export const SettingsPage: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-8 custom-scrollbar" ref={scrollRef}>
             <div className="max-w-5xl mx-auto flex flex-col gap-8 pb-20">
                 <div className="min-h-[200px]">
-                    {activeTab !== 'telegram' && (
+                    {(activeTab === 'gemini' || activeTab === 'kie' || activeTab === 'openrouter' || activeTab === 'replicate') && (
                         <div className="bg-[#252526] p-6 rounded border border-[#3e3e42] animate-slide-up">
                             <div className="flex items-center gap-3 mb-6">
                                 {activeTab === 'gemini' && <Globe className="w-8 h-8 text-blue-400" />}
@@ -701,6 +720,48 @@ export const SettingsPage: React.FC = () => {
                                 onFetch={handleFetchModels}
                             />
                             {fetchStatus && fetchStatus.provider === activeTab && <ApiConnectionStatus status={fetchStatus} />}
+                        </div>
+                    )}
+
+                    {activeTab === 'prompts' && (
+                        <div className="bg-[#252526] p-6 rounded border border-[#3e3e42] animate-slide-up">
+                            <div className="flex items-center gap-3 mb-2">
+                                <Terminal className="w-8 h-8 text-yellow-400" />
+                                <div>
+                                    <h3 className="text-lg font-bold text-white">{t('promptsTitle')}</h3>
+                                    <p className="text-xs text-[#999]">{t('promptsDesc')}</p>
+                                </div>
+                            </div>
+
+                            <div className="mt-6">
+                                <label className="text-[10px] font-bold text-[#666] uppercase mb-1.5 block">{t('textSystemPromptLabel')}</label>
+                                <textarea
+                                    value={textSystemPrompt}
+                                    onChange={e => setTextSystemPrompt(e.target.value)}
+                                    className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded p-3 text-xs text-[#ccc] font-mono outline-none focus:border-[#007acc] h-36 resize-none"
+                                    placeholder={t('textSystemPromptPlaceholder')}
+                                />
+                            </div>
+
+                            <div className="mt-4">
+                                <label className="text-[10px] font-bold text-[#666] uppercase mb-1.5 block">{t('imageSystemPromptLabel')}</label>
+                                <textarea
+                                    value={imageSystemPrompt}
+                                    onChange={e => setImageSystemPrompt(e.target.value)}
+                                    className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded p-3 text-xs text-[#ccc] font-mono outline-none focus:border-[#007acc] h-36 resize-none"
+                                    placeholder={t('imageSystemPromptPlaceholder')}
+                                />
+                            </div>
+
+                            <div className="mt-4">
+                                <label className="text-[10px] font-bold text-[#666] uppercase mb-1.5 block">{t('youtubeSystemPromptLabel')}</label>
+                                <textarea
+                                    value={youtubeSystemPrompt}
+                                    onChange={e => setYoutubeSystemPrompt(e.target.value)}
+                                    className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded p-3 text-xs text-[#ccc] font-mono outline-none focus:border-[#007acc] h-28 resize-none"
+                                    placeholder={t('youtubeSystemPromptPlaceholder')}
+                                />
+                            </div>
                         </div>
                     )}
 
@@ -730,6 +791,7 @@ export const SettingsPage: React.FC = () => {
                     )}
                 </div>
 
+                {(activeTab !== 'telegram' && activeTab !== 'prompts') && (
                 <div className="mt-8 border-t border-[#3e3e42] pt-8">
                     <div className="flex items-center justify-between mb-6"><h3 className="text-sm font-bold text-[#858585] uppercase tracking-widest flex items-center gap-2"><LayoutGrid className="w-4 h-4" /> {t('lblGlobalAssignments')}</h3></div>
                     <div className="flex flex-col gap-6">
@@ -807,8 +869,8 @@ export const SettingsPage: React.FC = () => {
                             onOpenManager={() => setShowModelManager(true)}
                         />
                     </div>
-                    <div className="mt-6"><label className="text-xs font-bold text-[#ccc] mb-2 block flex items-center gap-2"><Terminal className="w-3.5 h-3.5" />{t('systemPromptLabel')}</label><textarea value={systemPrompt} onChange={e => setSystemPrompt(e.target.value)} className="w-full bg-[#252526] border border-[#3e3e42] rounded p-3 text-xs text-[#ccc] font-mono outline-none focus:border-[#007acc] h-24 resize-none" placeholder={t('systemPromptPlaceholder')} /></div>
                 </div>
+                )}
             </div>
         </div>
         <CloudInspectorModal isOpen={showCloudInspector} onClose={() => setShowCloudInspector(false)} userId={user?.id} />

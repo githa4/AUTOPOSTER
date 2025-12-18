@@ -86,7 +86,12 @@ export const MainPage: React.FC = () => {
   const [tone, setTone] = useState(editorState.tone || t('toneProfessional'));
   const [imageStyle, setImageStyle] = useState(editorState.imageStyle || t('styleRealistic'));
   const [postCount, setPostCount] = useState(editorState.postCount || 1);
-  const [customSystemPrompt, setCustomSystemPrompt] = useState(editorState.customSystemPrompt || modelConfig.systemPrompt || '');
+    const [customSystemPrompt, setCustomSystemPrompt] = useState(
+            editorState.customSystemPrompt ||
+                    modelConfig.textSystemPrompt ||
+                    modelConfig.systemPrompt ||
+                    ''
+    );
   
   const [generatedText, setGeneratedText] = useState(editorState.generatedText);
   const [generatedImage, setGeneratedImage] = useState<string | null>(editorState.generatedImage);
@@ -137,30 +142,40 @@ export const MainPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, [topic, sourceType, language, tone, imageStyle, postCount, customSystemPrompt, postMode, includeLongRead, isTextEnabled, isImageEnabled, generatedText, generatedImage, currentImagePrompt, isSilent, inlineButtons, textStats, imageStats, currentDraftId, editorState.activeFolderId, scheduledAt, setEditorState]);
 
-  useEffect(() => {
-    if (editorState.currentDraftId !== currentDraftId) {
-        setTopic(editorState.topic);
-        setSourceType(editorState.sourceType);
-        setPostMode(editorState.postMode);
-        setIncludeLongRead(editorState.includeLongRead);
-        setIsTextEnabled(editorState.isTextEnabled ?? true);
-        setIsImageEnabled(editorState.isImageEnabled ?? true);
-        setLanguage(editorState.language);
-        setTone(editorState.tone || t('toneProfessional'));
-        setImageStyle(editorState.imageStyle || t('styleRealistic'));
-        setPostCount(editorState.postCount || 1);
-        setCustomSystemPrompt(editorState.customSystemPrompt || modelConfig.systemPrompt || '');
-        setGeneratedText(editorState.generatedText);
-        setGeneratedImage(editorState.generatedImage);
-        setCurrentImagePrompt(editorState.currentImagePrompt);
-        setIsSilent(editorState.isSilent);
-        setInlineButtons(editorState.inlineButtons || []);
-        setTextStats(editorState.textStats);
-        setImageStats(editorState.imageStats);
-        setCurrentDraftId(editorState.currentDraftId);
-        setScheduledAt(editorState.scheduledAt || '');
-    }
-  }, [editorState, currentDraftId, modelConfig.systemPrompt, t]);
+    useEffect(() => {
+        // Важно: при старте нового черновика MainPage выставляет локальный currentDraftId,
+        // а editorState.currentDraftId ещё может быть null (обновляется дебаунсом).
+        // Не перетираем локальное значение null-ом из editorState, иначе экран "мигнёт"
+        // и вернётся на WelcomeScreen.
+        if (!editorState.currentDraftId) return;
+        if (editorState.currentDraftId !== currentDraftId) {
+                setTopic(editorState.topic);
+                setSourceType(editorState.sourceType);
+                setPostMode(editorState.postMode);
+                setIncludeLongRead(editorState.includeLongRead);
+                setIsTextEnabled(editorState.isTextEnabled ?? true);
+                setIsImageEnabled(editorState.isImageEnabled ?? true);
+                setLanguage(editorState.language);
+                setTone(editorState.tone || t('toneProfessional'));
+                setImageStyle(editorState.imageStyle || t('styleRealistic'));
+                setPostCount(editorState.postCount || 1);
+                setCustomSystemPrompt(
+                    editorState.customSystemPrompt ||
+                        modelConfig.textSystemPrompt ||
+                        modelConfig.systemPrompt ||
+                        ''
+                );
+                setGeneratedText(editorState.generatedText);
+                setGeneratedImage(editorState.generatedImage);
+                setCurrentImagePrompt(editorState.currentImagePrompt);
+                setIsSilent(editorState.isSilent);
+                setInlineButtons(editorState.inlineButtons || []);
+                setTextStats(editorState.textStats);
+                setImageStats(editorState.imageStats);
+                setCurrentDraftId(editorState.currentDraftId);
+                setScheduledAt(editorState.scheduledAt || '');
+        }
+    }, [editorState, currentDraftId, modelConfig.textSystemPrompt, modelConfig.systemPrompt, t]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -369,7 +384,7 @@ export const MainPage: React.FC = () => {
                 <div className="absolute top-[72px] right-0 left-0 bg-[#1e1e1e] border-b border-[#3e3e42] p-4 shadow-2xl z-30 animate-fade-in flex flex-col gap-2">
                      <div className="flex justify-between items-center text-xs text-[#858585] uppercase font-bold tracking-wider mb-1">
                         <span>{t('promptEditorTitle')}</span>
-                        <div className="flex gap-2"><button onClick={() => setCustomSystemPrompt(modelConfig.systemPrompt || '')} className="hover:text-white flex items-center gap-1"><RotateCcw className="w-3 h-3" /> {t('promptReset')}</button><button onClick={() => setShowPromptEditor(false)} className="hover:text-white"><X className="w-4 h-4" /></button></div>
+                        <div className="flex gap-2"><button onClick={() => setCustomSystemPrompt(modelConfig.textSystemPrompt || modelConfig.systemPrompt || '')} className="hover:text-white flex items-center gap-1"><RotateCcw className="w-3 h-3" /> {t('promptReset')}</button><button onClick={() => setShowPromptEditor(false)} className="hover:text-white"><X className="w-4 h-4" /></button></div>
                      </div>
                      <textarea value={customSystemPrompt} onChange={(e) => setCustomSystemPrompt(e.target.value)} className="w-full h-32 bg-[#252526] border border-[#3e3e42] focus:border-[#007acc] rounded-sm p-3 text-xs text-[#cccccc] font-mono outline-none resize-none" placeholder={t('promptPlaceholder')} />
                      <div className="flex justify-end pt-2"><button onClick={() => setShowPromptEditor(false)} className="bg-[#0e639c] hover:bg-[#1177bb] text-white px-4 py-1.5 rounded-sm text-xs font-medium transition-colors flex items-center gap-2 shadow-sm"><Check className="w-3.5 h-3.5" /> {t('btnSavePrompt')}</button></div>

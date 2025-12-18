@@ -160,10 +160,25 @@ export const testTextGeneration = async (modelId: string, provider: ApiProvider,
     };
 };
 
-export const generatePostImage = async (prompt: string, modelId: string, apiConfig: ApiConfig, style: string, signal?: AbortSignal): Promise<{ base64: string, stats: GenerationStats }> => {
+export const generatePostImage = async (
+    prompt: string, 
+    modelId: string, 
+    apiConfig: ApiConfig, 
+    style: string, 
+    signal?: AbortSignal,
+    imageSystemPrompt?: string
+): Promise<{ base64: string, stats: GenerationStats }> => {
     const ai = getGeminiClient(apiConfig.geminiKey);
     const start = Date.now();
-    const finalPrompt = style && style !== 'Realistic' ? `${prompt}, style: ${style}` : prompt;
+    
+    let finalPrompt = prompt;
+    if (imageSystemPrompt) {
+        finalPrompt = `${imageSystemPrompt}\n\nSubject: ${prompt}`;
+    }
+    if (style && style !== 'Realistic') {
+        finalPrompt = `${finalPrompt}, style: ${style}`;
+    }
+
     // For nano banana series (gemini-2.5-flash-image / gemini-3-pro-image-preview), use generateContent.
     const response = await ai.models.generateContent({ model: modelId, contents: finalPrompt });
     let base64 = "";
@@ -222,23 +237,57 @@ export const rewritePostSegment = async (text: string, instruction: string, mode
     return response.text || text;
 };
 
-export const generatePostContent = async (topic: string, language: string, modelName: string, apiConfig: ApiConfig, tone: string = "Professional", style: string = "Realistic", customPrompt?: string, postCount: number = 1, sourceType: SourceType = 'text', postMode: PostMode = 'short', includeLongRead: boolean = false, provider: ApiProvider = 'gemini', signal?: AbortSignal): Promise<GeneratedContent> => {
+export const generatePostContent = async (
+    topic: string, 
+    language: string, 
+    modelName: string, 
+    apiConfig: ApiConfig, 
+    tone: string = "Professional", 
+    style: string = "Realistic", 
+    customPrompt?: string, 
+    postCount: number = 1, 
+    sourceType: SourceType = 'text', 
+    postMode: PostMode = 'short', 
+    includeLongRead: boolean = false, 
+    provider: ApiProvider = 'gemini', 
+    signal?: AbortSignal,
+    temperature: number = 0.7,
+    maxTokens: number = 2048
+): Promise<GeneratedContent> => {
   const start = Date.now();
   const system = customPrompt || "Act as a world-class professional Telegram editor.";
   const prompt = `${system} Topic: "${topic}" Language: ${language} Tone: ${tone} Posts: ${postCount} Mode: ${postMode}
     Output JSON: { "posts": [{"headline":"", "body":""}], "hashtags":[], "imagePrompt":"", "longReadRaw":"" }`;
+  
   if (provider === 'gemini') {
     const ai = getGeminiClient(apiConfig.geminiKey);
     // Use responseMimeType: "application/json" for structured data output.
-    const res = await ai.models.generateContent({ model: modelName, contents: prompt, config: { responseMimeType: "application/json" } });
+    const res = await ai.models.generateContent({ 
+        model: modelName, 
+        contents: prompt, 
+        config: { 
+            responseMimeType: "application/json",
+            temperature: temperature,
+            maxOutputTokens: maxTokens
+        } 
+    });
     // Use .text property directly.
     return { ...JSON.parse(res.text || '{}'), textStats: { modelName, latencyMs: Date.now() - start, inputTokens: res.usageMetadata?.promptTokenCount || 0, outputTokens: res.usageMetadata?.candidatesTokenCount || 0, totalTokens: res.usageMetadata?.totalTokenCount || 0 } };
   }
+  
   const url = provider === 'kie' ? "https://api.kie.ai/v1" : "https://openrouter.ai/api/v1";
   const key = provider === 'kie' ? apiConfig.kieKey : apiConfig.openRouterKey;
   const resp = await fetch(`${url}/chat/completions`, {
-    method: "POST", headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: modelName, messages: [{ role: "user", content: prompt }], response_format: { type: "json_object" } }), signal
+    method: "POST", 
+    headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ 
+        model: modelName, 
+        messages: [{ role: "user", content: prompt }], 
+        response_format: { type: "json_object" },
+        temperature: temperature,
+        max_tokens: maxTokens
+    }), 
+    signal
   });
   const data = await resp.json();
   return { ...JSON.parse(data.choices?.[0]?.message?.content || '{}'), textStats: { modelName, latencyMs: Date.now() - start, inputTokens: data.usage?.prompt_tokens || 0, outputTokens: data.usage?.completion_tokens || 0, totalTokens: data.usage?.total_tokens || 0 } };

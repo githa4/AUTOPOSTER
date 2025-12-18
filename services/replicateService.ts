@@ -183,14 +183,22 @@ export const generateReplicateImage = async (
     modelId: string,
     apiConfig: ApiConfig,
     style: string,
-    signal?: AbortSignal // NEW: Abort Signal
+    signal?: AbortSignal,
+    imageSystemPrompt?: string
 ): Promise<{ base64: string, stats: GenerationStats }> => {
     if (!apiConfig.replicateKey) throw new Error("Replicate API Key is missing");
     
     if (signal?.aborted) throw new Error("Image Generation Cancelled");
 
     const startTime = Date.now();
-    const finalPrompt = style && style !== 'Realistic' ? `${prompt}, style of ${style}, high quality` : prompt;
+    
+    let finalPrompt = prompt;
+    if (imageSystemPrompt) {
+        finalPrompt = `${imageSystemPrompt}\n\nSubject: ${prompt}`;
+    }
+    if (style && style !== 'Realistic') {
+        finalPrompt = `${finalPrompt}, style of ${style}, high quality`;
+    }
 
     // Define Inputs based on common Replicate models
     const input: any = { prompt: finalPrompt };

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { fetchBenchmarks, BenchmarkEntry } from '../services/benchmarkService';
+import { fetchBenchmarks, BenchmarkEntry, BenchmarkMode } from '../services/benchmarkService';
 import { 
     BarChart2, 
     RefreshCw, 
@@ -14,6 +14,7 @@ import {
     Lock,
     Unlock
 } from 'lucide-react';
+import { OpenRouterExplorer } from './benchmarks/OpenRouterExplorer';
 
 const RankBadge = ({ rank }: { rank: number }) => {
     if (rank === 1) return <div className="w-6 h-6 rounded bg-yellow-500/20 text-yellow-500 flex items-center justify-center font-bold text-xs border border-yellow-500/50">1</div>;
@@ -44,6 +45,7 @@ const EloBar = ({ score, maxScore }: { score: number, maxScore: number }) => {
 export const BenchmarksPage: React.FC = () => {
     const { t } = useAppContext();
     const [category, setCategory] = useState<'text' | 'code'>('text');
+    const [mode, setMode] = useState<BenchmarkMode>('arena-snapshot');
     const [data, setData] = useState<BenchmarkEntry[]>([]);
     const [loading, setLoading] = useState(false);
     const [search, setSearch] = useState('');
@@ -52,7 +54,7 @@ export const BenchmarksPage: React.FC = () => {
     const loadData = async () => {
         setLoading(true);
         try {
-            const result = await fetchBenchmarks(category);
+            const result = await fetchBenchmarks(category, mode);
             setData(result.data);
             setLastUpdated(result.timestamp);
         } catch (e) {
@@ -64,7 +66,19 @@ export const BenchmarksPage: React.FC = () => {
 
     useEffect(() => {
         loadData();
-    }, [category]);
+    }, [category, mode]);
+
+    const formatContext = (n?: number) => {
+        if (!n) return null;
+        if (n >= 1_000_000) return `${Math.round(n / 1_000_000)}M`;
+        if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
+        return `${n}`;
+    };
+
+    const formatPricePerM = (value?: number) => {
+        if (!value) return null;
+        return `$${value.toFixed(2)}/1M`;
+    };
 
     const filteredData = data.filter(item => 
         item.model.toLowerCase().includes(search.toLowerCase()) || 
@@ -104,7 +118,8 @@ export const BenchmarksPage: React.FC = () => {
 
             {/* Controls */}
             <div className="px-8 py-6 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
-                <div className="flex bg-[#252526] p-1 rounded-lg border border-[#3e3e42]">
+                <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="flex bg-[#252526] p-1 rounded-lg border border-[#3e3e42]">
                     <button 
                         onClick={() => setCategory('text')}
                         className={`px-4 py-1.5 rounded text-xs font-bold flex items-center gap-2 transition-all ${category === 'text' ? 'bg-[#37373d] text-white shadow-sm' : 'text-[#858585] hover:text-[#ccc]'}`}
@@ -119,6 +134,22 @@ export const BenchmarksPage: React.FC = () => {
                         <Code className="w-3.5 h-3.5" />
                         {t('benchCode')}
                     </button>
+                    </div>
+
+                    <div className="flex bg-[#252526] p-1 rounded-lg border border-[#3e3e42]">
+                        <button
+                            onClick={() => setMode('arena-snapshot')}
+                            className={`px-4 py-1.5 rounded text-xs font-bold transition-all ${mode === 'arena-snapshot' ? 'bg-[#37373d] text-white shadow-sm' : 'text-[#858585] hover:text-[#ccc]'}`}
+                        >
+                            {t('benchModeArena')}
+                        </button>
+                        <button
+                            onClick={() => setMode('arena-snapshot+openrouter')}
+                            className={`px-4 py-1.5 rounded text-xs font-bold transition-all ${mode === 'arena-snapshot+openrouter' ? 'bg-[#37373d] text-white shadow-sm' : 'text-[#858585] hover:text-[#ccc]'}`}
+                        >
+                            {t('benchModePrices')}
+                        </button>
+                    </div>
                 </div>
 
                 <div className="relative w-full md:w-64">
@@ -178,6 +209,39 @@ export const BenchmarksPage: React.FC = () => {
                                                 </span>
                                                 {item.rank <= 3 && <Trophy className="w-3 h-3 text-yellow-500 opacity-50" />}
                                             </div>
+
+                                            {'openRouterContextLength' in item && (
+                                                <div className="mt-1 text-[10px] text-[#858585] flex flex-wrap gap-x-3 gap-y-1">
+                                                    {item.openRouterContextLength ? (
+                                                        <span>
+                                                            {t('hubColContext')}: {formatContext(item.openRouterContextLength)}
+                                                        </span>
+                                                    ) : null}
+
+                                                    {item.openRouterPricingPerM?.inputPerM || item.openRouterPricingPerM?.outputPerM ? (
+                                                        <span>
+                                                            {t('hubColCost')}: {item.openRouterPricingPerM?.inputPerM ? formatPricePerM(item.openRouterPricingPerM?.inputPerM) : '—'} / {item.openRouterPricingPerM?.outputPerM ? formatPricePerM(item.openRouterPricingPerM?.outputPerM) : '—'}
+                                                        </span>
+                                                    ) : null}
+
+                                                    {item.openRouterCreatedAt ? (
+                                                        <span>
+                                                            {new Date(item.openRouterCreatedAt * 1000).toLocaleDateString()}
+                                                        </span>
+                                                    ) : null}
+
+                                                    {item.openRouterId ? (
+                                                        <a
+                                                            href={`https://openrouter.ai/models/${item.openRouterId}`}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            className="text-[#007acc] hover:underline"
+                                                        >
+                                                            OpenRouter
+                                                        </a>
+                                                    ) : null}
+                                                </div>
+                                            )}
                                         </td>
                                         <td className="p-4">
                                             <EloBar score={item.score} maxScore={maxScore} />
@@ -216,6 +280,8 @@ export const BenchmarksPage: React.FC = () => {
                         </a>
                     </div>
                 </div>
+
+                <OpenRouterExplorer />
             </div>
         </div>
     );

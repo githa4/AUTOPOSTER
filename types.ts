@@ -179,7 +179,19 @@ export interface ModelConfig {
   youtubeProvider: ApiProvider;
   imageProvider: ImageProvider; 
   imageModel: string; 
-  systemPrompt?: string; 
+  // Legacy field (kept for backwards compatibility / migration)
+  systemPrompt?: string;
+
+  // Preferred prompts
+  textSystemPrompt?: string;
+  imageSystemPrompt?: string;
+
+  // Optional, used when SourceType is 'youtube'
+  youtubeSystemPrompt?: string;
+
+  // Optional generation tuning
+  temperature?: number;
+  maxTokens?: number;
 }
 
 export interface ModelLimit {

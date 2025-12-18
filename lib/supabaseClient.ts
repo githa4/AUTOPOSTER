@@ -57,8 +57,8 @@ export interface DBPost {
     project_id: string | null;
     topic: string;
     content: string;
-    image_url: string | null; // Storing Base64 here for MVP, ideally Storage URL
-    status: 'draft' | 'published';
+    image_url: string | null; // Storage URL (do not store base64)
+    status: 'draft' | 'published' | 'scheduled';
     stats: any; // JSONB
     created_at: string;
     // Extra fields stored in stats or separate columns if needed

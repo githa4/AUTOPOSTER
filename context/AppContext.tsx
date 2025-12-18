@@ -60,7 +60,21 @@ const DEFAULT_MODEL_CONFIG: ModelConfig = {
     youtubeProvider: 'gemini',
     imageProvider: 'gemini',
     imageModel: 'gemini-2.5-flash-image',
-    systemPrompt: ''
+    systemPrompt: '',
+    textSystemPrompt: '',
+    imageSystemPrompt: '',
+    youtubeSystemPrompt: '',
+};
+
+const normalizeModelConfig = (raw: Partial<ModelConfig> | null | undefined): ModelConfig => {
+    const merged: ModelConfig = { ...DEFAULT_MODEL_CONFIG, ...(raw || {}) };
+
+    // One-way migration: legacy systemPrompt -> textSystemPrompt (if new field is empty)
+    if (merged.systemPrompt && !merged.textSystemPrompt) {
+        merged.textSystemPrompt = merged.systemPrompt;
+    }
+
+    return merged;
 };
 
 const safeSetItem = (key: string, value: any) => {
@@ -116,13 +130,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
   }, [apiKeys]);
 
-  const [modelConfig, setModelConfig] = useState<ModelConfig>(() => {
-    try {
-      const saved = localStorage.getItem(LS_MODEL_KEY);
-      const parsed = saved ? JSON.parse(saved) : DEFAULT_MODEL_CONFIG;
-      return { ...DEFAULT_MODEL_CONFIG, ...parsed };
-    } catch { return DEFAULT_MODEL_CONFIG; }
-  });
+    const [modelConfig, setModelConfig] = useState<ModelConfig>(() => {
+        try {
+            const saved = localStorage.getItem(LS_MODEL_KEY);
+            const parsed = saved ? JSON.parse(saved) : null;
+            return normalizeModelConfig(parsed);
+        } catch {
+            return DEFAULT_MODEL_CONFIG;
+        }
+    });
 
   const [availableModels, setAvailableModels] = useState<Model[]>(CORE_MODELS);
   const [favoriteModelIds, setFavoriteModelIds] = useState<string[]>(() => {
@@ -135,6 +151,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [history, setHistory] = useState<PostDraft[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
+
+  // Hydrate local-only entities early (works for anonymous mode too)
+  useEffect(() => {
+      try {
+          const savedHistory = localStorage.getItem(LS_HISTORY_KEY);
+          if (savedHistory) setHistory(JSON.parse(savedHistory));
+      } catch {}
+
+      try {
+          const savedFolders = localStorage.getItem(LS_FOLDERS_KEY);
+          if (savedFolders) setFolders(JSON.parse(savedFolders));
+      } catch {}
+
+      try {
+          const savedTemplates = localStorage.getItem(LS_TEMPLATES_KEY);
+          if (savedTemplates) setTemplates(JSON.parse(savedTemplates));
+      } catch {}
+  }, []);
   
   // Default to RU as requested
   const [uiLanguage, setUiLanguage] = useState<UiLanguage>(() => {
@@ -228,7 +262,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             if (profileData?.settings) {
                 const s = profileData.settings;
                 if (s.apiKeys) setApiKeys(s.apiKeys);
-                if (s.modelConfig) setModelConfig(prev => ({...prev, ...s.modelConfig}));
+                if (s.modelConfig) {
+                    setModelConfig(prev => normalizeModelConfig({ ...prev, ...s.modelConfig }));
+                }
                 if (s.favorites) setFavoriteModelIds(s.favorites);
                 if (s.telegramConfig) setTelegramConfig(s.telegramConfig);
             }
@@ -270,6 +306,136 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     }
                 }
             }
+
+            // --- Projects (folders) ---
+            const { data: dbProjects, error: projectsError } = await supabase
+                .from('projects')
+                .select('id, name, config, created_at')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false });
+
+            if (projectsError) {
+                console.error('Failed to load projects from Supabase', projectsError);
+            } else if (Array.isArray(dbProjects)) {
+                if (dbProjects.length > 0) {
+                    setFolders(
+                        dbProjects.map((row: any) => ({
+                            id: row.id,
+                            name: row.name,
+                            config: row.config || undefined,
+                            createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+                            isExpanded: true,
+                        }))
+                    );
+                } else if (folders.length > 0) {
+                    const rowsToInsert = folders.map((f) => ({
+                        id: f.id,
+                        user_id: user.id,
+                        name: f.name,
+                        config: f.config || {},
+                        created_at: new Date(f.createdAt).toISOString(),
+                    }));
+
+                    const { error: insertError } = await supabase
+                        .from('projects')
+                        .insert(rowsToInsert);
+
+                    if (insertError) {
+                        console.error('Failed to migrate local projects to Supabase', insertError);
+                    }
+                }
+            }
+
+            // --- Templates ---
+            const { data: dbTemplates, error: templatesError } = await supabase
+                .from('templates')
+                .select('id, name, config, created_at')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false });
+
+            if (templatesError) {
+                console.error('Failed to load templates from Supabase', templatesError);
+            } else if (Array.isArray(dbTemplates)) {
+                if (dbTemplates.length > 0) {
+                    setTemplates(
+                        dbTemplates.map((row: any) => ({
+                            id: row.id,
+                            name: row.name,
+                            config: row.config || {},
+                            createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+                        }))
+                    );
+                } else if (templates.length > 0) {
+                    const rowsToInsert = templates.map((t) => ({
+                        id: t.id,
+                        user_id: user.id,
+                        name: t.name,
+                        config: t.config,
+                        created_at: new Date(t.createdAt).toISOString(),
+                    }));
+
+                    const { error: insertError } = await supabase
+                        .from('templates')
+                        .insert(rowsToInsert);
+
+                    if (insertError) {
+                        console.error('Failed to migrate local templates to Supabase', insertError);
+                    }
+                }
+            }
+
+            // --- Posts (history) ---
+            const { data: dbPosts, error: postsError } = await supabase
+                .from('posts')
+                .select('id, project_id, topic, content, image_url, status, scheduled_at, created_at, stats, title')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false });
+
+            if (postsError) {
+                console.error('Failed to load posts from Supabase', postsError);
+            } else if (Array.isArray(dbPosts)) {
+                if (dbPosts.length > 0) {
+                    setHistory(
+                        dbPosts.map((row: any) => ({
+                            id: row.id,
+                            folderId: row.project_id || undefined,
+                            title: row.title || undefined,
+                            topic: row.topic || '',
+                            content: row.content || '',
+                            imageBase64: null,
+                            imageUrl: row.image_url || null,
+                            createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+                            scheduledAt: row.scheduled_at ? new Date(row.scheduled_at).getTime() : null,
+                            status: row.status || 'draft',
+                            postCount: row.stats?.postCount || 1,
+                            stats: row.stats || undefined,
+                        }))
+                    );
+                } else if (history.length > 0) {
+                    const rowsToInsert = history.map((d) => ({
+                        id: d.id,
+                        user_id: user.id,
+                        project_id: d.folderId || null,
+                        topic: d.topic,
+                        content: d.content,
+                        // Never store base64 in DB; only URL (Storage) or null
+                        image_url: d.imageUrl || null,
+                        status: d.status,
+                        scheduled_at: d.scheduledAt ? new Date(d.scheduledAt).toISOString() : null,
+                        created_at: new Date(d.createdAt).toISOString(),
+                        stats: d.stats || null,
+                        title: d.title || null,
+                    }));
+
+                    const { error: insertError } = await supabase
+                        .from('posts')
+                        .insert(rowsToInsert);
+
+                    if (insertError) {
+                        console.error('Failed to migrate local posts to Supabase', insertError);
+                    }
+                }
+            }
         } catch (e) { console.error("Sync Error", e); }
         finally { setIsSettingsLoaded(true); }
     };
@@ -289,6 +455,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   useEffect(() => { safeSetItem(LS_TG_KEY, telegramConfig); }, [telegramConfig]);
   useEffect(() => { safeSetItem(LS_INTEGRATIONS_KEY, integrations); }, [integrations]);
+
+    useEffect(() => { safeSetItem(LS_HISTORY_KEY, history); }, [history]);
+    useEffect(() => { safeSetItem(LS_FOLDERS_KEY, folders); }, [folders]);
+    useEffect(() => { safeSetItem(LS_TEMPLATES_KEY, templates); }, [templates]);
 
   useEffect(() => { safeSetItem(LS_API_WALLET_KEY, apiKeys); }, [apiKeys]);
   useEffect(() => { safeSetItem(LS_MODEL_KEY, modelConfig); }, [modelConfig]);
@@ -357,7 +527,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             project_id: draft.folderId || null,
             topic: draft.topic,
             content: draft.content,
-            image_url: draft.imageUrl || draft.imageBase64, 
+                        // Never store base64 in DB
+                        image_url: draft.imageUrl || null,
             status: draft.status,
             scheduled_at: draft.scheduledAt ? new Date(draft.scheduledAt).toISOString() : null,
             created_at: new Date(draft.createdAt).toISOString(),

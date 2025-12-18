@@ -1,4 +1,16 @@
-понимаем# 📜 CHANGELOG
+# 📜 CHANGELOG
+
+---
+
+#️⃣ [Unreleased] 📅 2025-12-18 🕤 10:00
+
+▶️ **Тема коммита:** `🐛 fix: новый черновик не открывал экран постинга (мигание)`
+
+✅ Исправлено
+- Главная → «Новый черновик»: устранено мигание и возврат на WelcomeScreen из-за гонки `editorState.currentDraftId` vs локального `currentDraftId`
+
+✅ Изменено
+- `components/MainPage.tsx`: синхронизация из `editorState` выполняется только когда `editorState.currentDraftId` задан
 
 ---
 
