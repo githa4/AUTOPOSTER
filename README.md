@@ -1,20 +1,37 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# AutoPost.ai
 
-# Run and deploy your AI Studio app
+Веб-приложение (React + Vite + TypeScript) для генерации контента и автопостинга.
 
-This contains everything you need to run your app locally.
+Документация проекта: [doc/01🔵-README.md](doc/01%F0%9F%94%B5-README.md)
 
-View your app in AI Studio: https://ai.studio/apps/drive/1qU5q0k8AEaP3Vy27nL3BxVxAyLb5fL0y
+## Быстрый старт
 
-## Run Locally
+Требования: Node.js
 
-**Prerequisites:**  Node.js
+1) Установка зависимостей:
 
+`npm install`
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+2) Переменные окружения (создайте файл `.env.local`):
+
+`GEMINI_API_KEY=...`
+
+Опционально (если хотите использовать свои Supabase креды вместо встроенных):
+
+`VITE_SUPABASE_URL=...`
+
+`VITE_SUPABASE_ANON_KEY=...`
+
+3) Запуск dev-сервера:
+
+`npm run dev`
+
+## Скрипты
+
+- `npm run dev` — запуск в режиме разработки
+- `npm run build` — production build
+- `npm run preview` — предпросмотр production build
+
+## Изменения
+
+См. [CHANGELOG.md](CHANGELOG.md)
