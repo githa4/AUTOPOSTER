@@ -2,6 +2,21 @@
 
 ---
 
+#️⃣ [Unreleased] 📅 2025-12-18 🕤 10:45
+
+▶️ **Тема коммита:** `🧠 integrations: вкладка «Промпты» + раздельные system prompts (текст/картинки/YouTube)`
+
+✅ Добавлено
+- `components/SettingsPage.tsx`: вкладка «Промпты» в Integrations
+- `types.ts`: поля `textSystemPrompt`, `imageSystemPrompt`, `youtubeSystemPrompt` (и подготовка под `temperature/maxTokens`)
+- `public/favicon.svg` + явный `<link rel="icon" ...>` в `index.html` (убран 404 `/favicon.ico`)
+
+✅ Изменено
+- `context/AppContext.tsx`: миграция legacy `systemPrompt` → `textSystemPrompt` (с fallback)
+- `hooks/usePostGeneration.ts`: использование раздельных промптов для генерации текста/изображений
+
+---
+
 #️⃣ [Unreleased] 📅 2025-12-18 🕤 10:30
 
 ▶️ **Тема коммита:** `🧹 supabase: упорядочить sync (hydrate при логине) + один клиент + smoke-check`

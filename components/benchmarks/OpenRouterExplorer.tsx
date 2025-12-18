@@ -24,7 +24,19 @@ type OpenRouterCategory =
   | 'audio'
   | 'multimodal';
 
-type SortKey = 'rank' | 'created' | 'context' | 'priceIn' | 'priceOut';
+type SortKey =
+  | 'rank'
+  | 'name'
+  | 'created'
+  | 'context'
+  | 'priceIn'
+  | 'priceOut'
+  | 'priceImage'
+  | 'priceAudio'
+  | 'priceRequest'
+  | 'priceWebSearch'
+  | 'priceCacheRead'
+  | 'supportedParams';
 
 const normalize = (value: string): string =>
   value
@@ -56,23 +68,53 @@ const formatDate = (unixSeconds?: number) => {
   return new Date(unixSeconds * 1000).toLocaleDateString();
 };
 
+const formatUsd = (valueRaw?: string) => {
+  if (!valueRaw || valueRaw === '0') return '—';
+  const parsed = Number.parseFloat(valueRaw);
+  if (!Number.isFinite(parsed)) return '—';
+  return `$${parsed}`;
+};
+
+const parseModality = (
+  modalityRaw: string | undefined,
+): { inputs: Set<string>; outputs: Set<string> } => {
+  const modality = (modalityRaw ?? '').toLowerCase().trim();
+  const [left, right] = modality.split('->');
+
+  const parseSide = (side: string | undefined): Set<string> => {
+    const set = new Set<string>();
+    if (!side) return set;
+    for (const part of side.split('+')) {
+      const token = part.trim();
+      if (!token) continue;
+      set.add(token);
+    }
+    return set;
+  };
+
+  return {
+    inputs: parseSide(left),
+    outputs: parseSide(right),
+  };
+};
+
 const detectCategory = (model: OpenRouterModel): OpenRouterCategory => {
-  const modality = normalize(model.architecture?.modality ?? '');
+  const modalityRaw = model.architecture?.modality;
+  const { inputs, outputs } = parseModality(modalityRaw);
+  const modality = normalize(modalityRaw ?? '');
   const id = normalize(model.id);
   const name = normalize(model.name);
 
-  const isVideo = modality.includes('video') || id.includes('video') || name.includes('video');
-  if (isVideo) return 'video';
+  // Prefer explicit I/O modality from API.
+  if (outputs.has('video') || inputs.has('video') || modality.includes('video')) return 'video';
+  if (outputs.has('audio') || inputs.has('audio') || modality.includes('audio')) return 'audio';
 
-  const isAudio = modality.includes('audio') || id.includes('audio') || name.includes('audio');
-  if (isAudio) return 'audio';
-
-  const isImage = modality.includes('image') || id.includes('image') || name.includes('image');
-
-  const isText = modality.includes('text') || modality.includes('llm') || modality === '';
-  const isMulti = isImage && isText;
-  if (isMulti) return 'multimodal';
-  if (isImage) return 'image';
+  // Models that can OUTPUT images should show up under Image.
+  // Vision-only models (image input -> text output) go to Multimodal.
+  const outputsImage = outputs.has('image');
+  const inputsImage = inputs.has('image');
+  if (outputsImage) return 'image';
+  if (inputsImage) return 'multimodal';
 
   const isCoding =
     id.includes('code') ||
@@ -92,8 +134,46 @@ const Badge: React.FC<{ label: string }> = ({ label }) => (
   </span>
 );
 
+const AccentBadge: React.FC<{
+  label: string;
+  variant: 'new' | 'free';
+}> = ({ label, variant }) => {
+  const cls =
+    variant === 'new'
+      ? 'border-blue-500/30 bg-blue-900/20 text-blue-200'
+      : 'border-green-500/30 bg-green-900/20 text-green-200';
+
+  return (
+    <span
+      className={
+        `inline-flex items-center px-2 py-0.5 rounded text-[9px] font-bold uppercase border ${cls}`
+      }
+    >
+      {label}
+    </span>
+  );
+};
+
 export const OpenRouterExplorer: React.FC = () => {
   const { t } = useAppContext();
+
+  const LS_RIGHT_WIDTH = 'autopost_or_details_width_px';
+
+  const [detailsWidthPx, setDetailsWidthPx] = useState<number>(() => {
+    try {
+      const raw = localStorage.getItem(LS_RIGHT_WIDTH);
+      const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+      return Number.isFinite(parsed) ? parsed : 360;
+    } catch {
+      return 360;
+    }
+  });
+
+  const [isResizing, setIsResizing] = useState(false);
+  const [isWideLayout, setIsWideLayout] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(min-width: 1024px)').matches;
+  });
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,6 +181,7 @@ export const OpenRouterExplorer: React.FC = () => {
   const [category, setCategory] = useState<OpenRouterCategory>('all');
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('rank');
+  const [onlyFree, setOnlyFree] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<number>(Date.now());
 
@@ -124,16 +205,42 @@ export const OpenRouterExplorer: React.FC = () => {
   }, []);
 
   const enriched = useMemo(() => {
+    const NEW_DAYS = 30;
+    const nowMs = Date.now();
+
     return models.map(m => {
       const inputPerM = toPerM(m.pricing?.prompt);
       const outputPerM = toPerM(m.pricing?.completion);
+      const imagePerM = toPerM(m.pricing?.image);
+      const audioPerM = toPerM(m.pricing?.audio);
+      const requestPerM = toPerM(m.pricing?.request);
+      const webSearchPerM = toPerM(m.pricing?.web_search);
+      const cacheReadPerM = toPerM(m.pricing?.input_cache_read);
       const cat = detectCategory(m);
+
+      const idLower = (m.id ?? '').toLowerCase();
+      const nameLower = (m.name ?? '').toLowerCase();
+      const slugLower = (m.canonical_slug ?? '').toLowerCase();
+      const isFree = idLower.includes(':free') || nameLower.includes('free') || slugLower.includes('free');
+
+      const isNew =
+        typeof m.created === 'number'
+          ? nowMs - m.created * 1000 <= NEW_DAYS * 24 * 60 * 60 * 1000
+          : false;
 
       return {
         model: m,
         category: cat,
         inputPerM,
         outputPerM,
+        imagePerM,
+        audioPerM,
+        requestPerM,
+        webSearchPerM,
+        cacheReadPerM,
+        supportedParamsCount: m.supported_parameters?.length ?? 0,
+        isFree,
+        isNew,
         context:
           m.context_length ??
           m.top_provider?.context_length ??
@@ -147,6 +254,7 @@ export const OpenRouterExplorer: React.FC = () => {
 
     const list = enriched.filter(x => {
       if (category !== 'all' && x.category !== category) return false;
+      if (onlyFree && !x.isFree) return false;
 
       if (!q) return true;
       const hay = `${x.model.id} ${x.model.name} ${x.model.canonical_slug ?? ''}`;
@@ -161,20 +269,152 @@ export const OpenRouterExplorer: React.FC = () => {
         return a.model.id.localeCompare(b.model.id);
       }
 
+      if (sortKey === 'name') return a.model.name.localeCompare(b.model.name);
+
       if (sortKey === 'created') return (b.model.created ?? 0) - (a.model.created ?? 0);
       if (sortKey === 'context') return (b.context ?? 0) - (a.context ?? 0);
       if (sortKey === 'priceIn') return (a.inputPerM ?? Number.POSITIVE_INFINITY) - (b.inputPerM ?? Number.POSITIVE_INFINITY);
       if (sortKey === 'priceOut') return (a.outputPerM ?? Number.POSITIVE_INFINITY) - (b.outputPerM ?? Number.POSITIVE_INFINITY);
+      if (sortKey === 'priceImage') return (a.imagePerM ?? Number.POSITIVE_INFINITY) - (b.imagePerM ?? Number.POSITIVE_INFINITY);
+      if (sortKey === 'priceAudio') return (a.audioPerM ?? Number.POSITIVE_INFINITY) - (b.audioPerM ?? Number.POSITIVE_INFINITY);
+      if (sortKey === 'priceRequest') return (a.requestPerM ?? Number.POSITIVE_INFINITY) - (b.requestPerM ?? Number.POSITIVE_INFINITY);
+      if (sortKey === 'priceWebSearch') return (a.webSearchPerM ?? Number.POSITIVE_INFINITY) - (b.webSearchPerM ?? Number.POSITIVE_INFINITY);
+      if (sortKey === 'priceCacheRead') return (a.cacheReadPerM ?? Number.POSITIVE_INFINITY) - (b.cacheReadPerM ?? Number.POSITIVE_INFINITY);
+      if (sortKey === 'supportedParams') return (b.supportedParamsCount ?? 0) - (a.supportedParamsCount ?? 0);
       return 0;
     };
 
     return [...list].sort(cmp);
-  }, [category, enriched, search, sortKey]);
+  }, [category, enriched, onlyFree, search, sortKey]);
 
   const selected = useMemo(() => {
     if (!selectedId) return null;
     return enriched.find(x => x.model.id === selectedId) ?? null;
   }, [enriched, selectedId]);
+
+  const apiGroups = useMemo(() => {
+    if (!selected) return [] as Array<{ title: string; rows: Array<[string, string]> }>;
+
+    const m = selected.model;
+
+    const pushRows = (rows: Array<[string, string]>, label: string, value: unknown) => {
+      if (value === null || value === undefined) return;
+      const str = typeof value === 'string' ? value : JSON.stringify(value);
+      if (!str || str === '""') return;
+      rows.push([label, str]);
+    };
+
+    const idRows: Array<[string, string]> = [];
+    pushRows(idRows, 'id', m.id);
+    pushRows(idRows, 'name', m.name);
+    pushRows(idRows, 'canonical_slug', m.canonical_slug);
+    pushRows(idRows, 'hugging_face_id', m.hugging_face_id);
+    pushRows(idRows, 'created', m.created ? String(m.created) : undefined);
+    pushRows(idRows, 'created_date', m.created ? formatDate(m.created) : undefined);
+
+    const archRows: Array<[string, string]> = [];
+    pushRows(archRows, 'architecture.modality', m.architecture?.modality);
+    pushRows(archRows, 'architecture.tokenizer', m.architecture?.tokenizer);
+    pushRows(archRows, 'architecture.instruct_type', m.architecture?.instruct_type);
+
+    const ctxRows: Array<[string, string]> = [];
+    pushRows(ctxRows, 'context_length', m.context_length);
+    pushRows(ctxRows, 'top_provider.context_length', m.top_provider?.context_length);
+    pushRows(ctxRows, 'top_provider.max_completion_tokens', m.top_provider?.max_completion_tokens);
+    pushRows(ctxRows, 'top_provider.is_moderated', m.top_provider?.is_moderated);
+    pushRows(ctxRows, 'per_request_limits.max_input_tokens', m.per_request_limits?.max_input_tokens);
+    pushRows(ctxRows, 'per_request_limits.max_output_tokens', m.per_request_limits?.max_output_tokens);
+
+    const pricingRows: Array<[string, string]> = [];
+    const addPricing = (key: string, raw?: string) => {
+      if (!raw || raw === '0') return;
+      const perM = toPerM(raw);
+      const perMText = perM ? ` (${formatUsdPerM(perM)})` : '';
+      pricingRows.push([`pricing.${key}`, `${formatUsd(raw)}${perMText}`]);
+    };
+    addPricing('prompt', m.pricing?.prompt);
+    addPricing('completion', m.pricing?.completion);
+    addPricing('image', m.pricing?.image);
+    addPricing('audio', m.pricing?.audio);
+    addPricing('request', m.pricing?.request);
+    addPricing('web_search', m.pricing?.web_search);
+    addPricing('internal_reasoning', m.pricing?.internal_reasoning);
+    addPricing('input_cache_read', m.pricing?.input_cache_read);
+
+    const paramsRows: Array<[string, string]> = [];
+    pushRows(paramsRows, 'supported_parameters', m.supported_parameters?.length ? m.supported_parameters.join(', ') : undefined);
+    pushRows(paramsRows, 'default_parameters', m.default_parameters);
+
+    const groups: Array<{ title: string; rows: Array<[string, string]> }> = [];
+    if (idRows.length) groups.push({ title: t('orApiIdentity'), rows: idRows });
+    if (archRows.length) groups.push({ title: t('orApiArchitecture'), rows: archRows });
+    if (ctxRows.length) groups.push({ title: t('orApiLimitsProvider'), rows: ctxRows });
+    if (pricingRows.length) groups.push({ title: t('orApiPricing'), rows: pricingRows });
+    if (paramsRows.length) groups.push({ title: t('orApiParams'), rows: paramsRows });
+
+    return groups;
+  }, [selected, t]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_RIGHT_WIDTH, String(detailsWidthPx));
+    } catch {
+      // ignore
+    }
+  }, [detailsWidthPx]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const onChange = () => setIsWideLayout(mq.matches);
+    onChange();
+
+    if (typeof mq.addEventListener === 'function') {
+      mq.addEventListener('change', onChange);
+      return () => mq.removeEventListener('change', onChange);
+    }
+
+    // Safari fallback
+    // @ts-expect-error legacy MediaQueryList
+    mq.addListener(onChange);
+    // @ts-expect-error legacy MediaQueryList
+    return () => mq.removeListener(onChange);
+  }, []);
+
+  const startResize = (e: React.PointerEvent) => {
+    if (!isWideLayout) return;
+
+    e.preventDefault();
+    setIsResizing(true);
+
+    const prevCursor = document.body.style.cursor;
+    const prevUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const startX = e.clientX;
+    const startWidth = detailsWidthPx;
+
+    const MIN = 280;
+    const MAX = 860;
+
+    const onMove = (ev: PointerEvent) => {
+      const dx = startX - ev.clientX; // dragging left increases panel width
+      const next = Math.max(MIN, Math.min(MAX, startWidth + dx));
+      setDetailsWidthPx(next);
+    };
+
+    const onUp = () => {
+      setIsResizing(false);
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevUserSelect;
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
 
   const categories: Array<{
     key: OpenRouterCategory;
@@ -261,6 +501,19 @@ export const OpenRouterExplorer: React.FC = () => {
               />
             </div>
 
+            <button
+              onClick={() => setOnlyFree(v => !v)}
+              className={
+                `px-3 py-2 rounded border text-xs font-bold transition-colors ` +
+                (onlyFree
+                  ? 'bg-green-900/20 text-green-200 border-green-500/30'
+                  : 'bg-[#252526] text-[#ccc] border-[#3e3e42] hover:bg-[#333]')
+              }
+              title={t('orFilterFree')}
+            >
+              {t('orFilterFree')}
+            </button>
+
             <select
               value={sortKey}
               onChange={e => setSortKey(e.target.value as SortKey)}
@@ -268,10 +521,17 @@ export const OpenRouterExplorer: React.FC = () => {
               aria-label={t('orSort')}
             >
               <option value="rank">{t('orSortSmart')}</option>
+              <option value="name">{t('orSortName')}</option>
               <option value="created">{t('orSortCreated')}</option>
               <option value="context">{t('orSortContext')}</option>
               <option value="priceIn">{t('orSortPriceIn')}</option>
               <option value="priceOut">{t('orSortPriceOut')}</option>
+              <option value="priceImage">{t('orSortPriceImage')}</option>
+              <option value="priceAudio">{t('orSortPriceAudio')}</option>
+              <option value="priceRequest">{t('orSortPriceRequest')}</option>
+              <option value="priceWebSearch">{t('orSortPriceWebSearch')}</option>
+              <option value="priceCacheRead">{t('orSortPriceCacheRead')}</option>
+              <option value="supportedParams">{t('orSortSupportedParams')}</option>
             </select>
           </div>
         </div>
@@ -284,8 +544,8 @@ export const OpenRouterExplorer: React.FC = () => {
         ) : null}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-0">
-        <div className="overflow-auto custom-scrollbar">
+      <div className="flex flex-col lg:flex-row">
+        <div className="overflow-auto custom-scrollbar lg:flex-1 lg:min-w-0">
           <table className="w-full text-left border-collapse">
             <thead className="bg-[#252526] text-[10px] font-bold text-[#858585] uppercase tracking-wider sticky top-0 z-10">
               <tr>
@@ -331,6 +591,12 @@ export const OpenRouterExplorer: React.FC = () => {
                           {x.model.id}
                         </span>
                         <div className="flex flex-wrap gap-2 mt-1">
+                          {x.isNew ? (
+                            <AccentBadge label={t('orBadgeNew')} variant="new" />
+                          ) : null}
+                          {x.isFree ? (
+                            <AccentBadge label={t('orBadgeFree')} variant="free" />
+                          ) : null}
                           {x.model.pricing?.web_search && x.model.pricing.web_search !== '0' ? (
                             <Badge label="web" />
                           ) : null}
@@ -377,7 +643,35 @@ export const OpenRouterExplorer: React.FC = () => {
           </div>
         </div>
 
-        <div className="border-t lg:border-t-0 lg:border-l border-[#252526] bg-[#1e1e1e]">
+        {/* Resize handle (desktop) */}
+        <div className="hidden lg:block">
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label={t('orDetails')}
+            onPointerDown={startResize}
+            onDoubleClick={() => setDetailsWidthPx(360)}
+            className={
+              `w-3 cursor-col-resize relative transition-colors ` +
+              (isResizing ? 'bg-[#2a2d2e]' : 'bg-transparent hover:bg-[#252526]')
+            }
+            style={{
+              touchAction: 'none',
+            }}
+          >
+            <span className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-[#3e3e42]" />
+            <span className="absolute inset-y-0 left-1/2 -translate-x-1/2 -ml-[3px] w-px bg-[#3e3e42]/70" />
+            <span className="absolute inset-y-0 left-1/2 -translate-x-1/2 ml-[3px] w-px bg-[#3e3e42]/70" />
+          </div>
+        </div>
+
+        <div
+          className="border-t lg:border-t-0 lg:border-l border-[#252526] bg-[#1e1e1e]"
+          style={{
+            width: isWideLayout ? detailsWidthPx : '100%',
+            flex: '0 0 auto',
+          }}
+        >
           <div className="px-6 py-4 border-b border-[#252526]">
             <div className="text-[10px] text-[#858585] uppercase tracking-wider font-bold">
               {t('orDetails')}
@@ -425,7 +719,44 @@ export const OpenRouterExplorer: React.FC = () => {
                 <div className="text-xs font-mono text-white mt-1">
                   out: {formatUsdPerM(selected.outputPerM)}
                 </div>
+                {selected.model.pricing?.image && selected.model.pricing.image !== '0' ? (
+                  <div className="text-xs font-mono text-white mt-1">
+                    img: {formatUsdPerM(selected.imagePerM)}
+                  </div>
+                ) : null}
+                {selected.model.pricing?.audio && selected.model.pricing.audio !== '0' ? (
+                  <div className="text-xs font-mono text-white mt-1">
+                    audio: {formatUsdPerM(selected.audioPerM)}
+                  </div>
+                ) : null}
               </div>
+
+              {apiGroups.length ? (
+                <div className="p-3 bg-[#252526] border border-[#3e3e42] rounded">
+                  <div className="text-[10px] text-[#858585] uppercase tracking-wider font-bold">
+                    {t('orApiFieldsTitle')}
+                  </div>
+
+                  <div className="mt-3 space-y-3">
+                    {apiGroups.map(g => (
+                      <div key={g.title}>
+                        <div className="text-[9px] text-[#858585] font-bold uppercase">
+                          {g.title}
+                        </div>
+                        <div className="mt-2 space-y-1">
+                          {g.rows.map(([k, v]) => (
+                            <div key={`${g.title}:${k}`} className="text-[10px] text-[#ccc]">
+                              <span className="font-mono text-[#858585]">{k}</span>
+                              <span className="mx-2 text-[#666]">—</span>
+                              <span className="font-mono text-white break-words">{v}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               {selected.model.supported_parameters?.length ? (
                 <div>

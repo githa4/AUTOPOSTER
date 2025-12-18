@@ -36,8 +36,8 @@ export interface OpenRouterModel {
   context_length?: number;
   architecture?: OpenRouterModelArchitecture;
   pricing?: OpenRouterModelPricing;
-  top_provider?: OpenRouterTopProvider;
-  per_request_limits?: OpenRouterPerRequestLimits;
+  top_provider?: OpenRouterTopProvider | null;
+  per_request_limits?: OpenRouterPerRequestLimits | null;
   supported_parameters?: string[];
   default_parameters?: Record<string, unknown>;
 }

@@ -80,6 +80,29 @@ const sha256_8 = (value) => {
   return crypto.createHash('sha256').update(value).digest('hex').slice(0, 8);
 };
 
+const looksLikeRlsOrAuth = (error) => {
+  if (!error) return false;
+  const code = String(error.code || '').toUpperCase();
+  const message = String(error.message || '').toLowerCase();
+  const status = Number(error.status || error.statusCode || NaN);
+
+  // Common signals:
+  // - 401/403 from PostgREST
+  // - 42501: insufficient_privilege (Postgres)
+  // - PGRST*** codes (PostgREST)
+  if (status === 401 || status === 403) return true;
+  if (code === '42501') return true;
+  if (code.startsWith('PGRST')) return true;
+
+  return (
+    message.includes('row-level security') ||
+    message.includes('rls') ||
+    message.includes('permission denied') ||
+    message.includes('insufficient') ||
+    message.includes('jwt')
+  );
+};
+
 const main = async () => {
   loadEnv();
 
@@ -147,6 +170,12 @@ const main = async () => {
     // но для нас важно, что сетевой коннект есть и Supabase отвечает.
     console.log(`- /rest/v1/: ${restRes.status} (response received)`);
     console.log(`  body: ${restText.slice(0, 120).replace(/\s+/g, ' ')}`);
+
+    if (restRes.status === 401 || restRes.status === 403) {
+      console.log(
+        '  WARN: REST отвечает 401/403 — сеть/URL OK, но доступ может быть ограничен RLS/Policy или неверным ключом.',
+      );
+    }
   } catch (e) {
     console.error('FAIL: fetch /rest/v1/ failed');
     console.error(e);
@@ -163,7 +192,13 @@ const main = async () => {
     const { error } = await supabase.from('profiles').select('id').limit(1);
     if (error) {
       console.log(`- supabase-js query (profiles): ERROR (${error.code || 'no_code'}) ${error.message}`);
-      console.log('  note: this can be expected if table does not exist or RLS blocks anon access.');
+      if (looksLikeRlsOrAuth(error)) {
+        console.log(
+          '  note: похоже на RLS/Policy/anon-доступ. Коннект есть, но анонимному ключу может быть запрещён SELECT (или нужна авторизация).',
+        );
+      } else {
+        console.log('  note: this can be expected if table does not exist or RLS blocks anon access.');
+      }
     } else {
       console.log('- supabase-js query (profiles): OK');
     }

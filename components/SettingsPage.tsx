@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { getAvailableModels, testTextGeneration, generatePostImage } from '../services/geminiService';
+import {
+    DEFAULT_IMAGE_SYSTEM_PROMPT,
+    DEFAULT_TEXT_SYSTEM_PROMPT,
+    DEFAULT_YOUTUBE_CONTEXT_PROMPT,
+    generatePostImage,
+    getAvailableModels,
+    testTextGeneration,
+} from '../services/geminiService';
 import { testTelegramConnection } from '../services/telegramService';
 import { testImageGeneration } from '../services/replicateService';
 import { ApiProvider, Model, ImageProvider, IntegrationProvider, Integration, ApiKeyEntry } from '../types';
@@ -532,6 +539,8 @@ export const SettingsPage: React.FC = () => {
     const [textSystemPrompt, setTextSystemPrompt] = useState('');
     const [imageSystemPrompt, setImageSystemPrompt] = useState('');
     const [youtubeSystemPrompt, setYoutubeSystemPrompt] = useState('');
+        const [temperatureInput, setTemperatureInput] = useState('');
+        const [maxTokensInput, setMaxTokensInput] = useState('');
   
   const [isFetchingModels, setIsFetchingModels] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle');
@@ -578,6 +587,20 @@ export const SettingsPage: React.FC = () => {
 
   const [fetchStatus, setFetchStatus] = useState<{ provider: string; count: number; success: boolean; message?: string; timestamp: number; isFallback?: boolean; } | null>(null);
 
+  const handleResetPromptsToDefault = () => {
+      setTextSystemPrompt(DEFAULT_TEXT_SYSTEM_PROMPT);
+      setImageSystemPrompt(DEFAULT_IMAGE_SYSTEM_PROMPT);
+      setYoutubeSystemPrompt(DEFAULT_YOUTUBE_CONTEXT_PROMPT);
+      showToast(t('toastPromptsReset'), 'success');
+  };
+
+  const applyDefaultPromptForField = (kind: 'text' | 'image' | 'youtube') => {
+      if (kind === 'text') setTextSystemPrompt(DEFAULT_TEXT_SYSTEM_PROMPT);
+      if (kind === 'image') setImageSystemPrompt(DEFAULT_IMAGE_SYSTEM_PROMPT);
+      if (kind === 'youtube') setYoutubeSystemPrompt(DEFAULT_YOUTUBE_CONTEXT_PROMPT);
+      showToast(t('toastDefaultPromptApplied'), 'info');
+  };
+
   useEffect(() => {
     setTextModel(modelConfig.textModel || '');
     setTextProvider(modelConfig.textProvider || 'gemini');
@@ -588,6 +611,16 @@ export const SettingsPage: React.FC = () => {
         setTextSystemPrompt(modelConfig.textSystemPrompt || modelConfig.systemPrompt || '');
         setImageSystemPrompt(modelConfig.imageSystemPrompt || '');
         setYoutubeSystemPrompt(modelConfig.youtubeSystemPrompt || '');
+        setTemperatureInput(
+            modelConfig.temperature === undefined || modelConfig.temperature === null
+                ? ''
+                : String(modelConfig.temperature),
+        );
+        setMaxTokensInput(
+            modelConfig.maxTokens === undefined || modelConfig.maxTokens === null
+                ? ''
+                : String(modelConfig.maxTokens),
+        );
   }, [modelConfig]);
 
   const runTelegramTest = async (int?: Integration) => {
@@ -628,6 +661,29 @@ export const SettingsPage: React.FC = () => {
   };
 
   const handleSaveGlobal = () => {
+        const rawTemperature = temperatureInput.trim();
+        const rawMaxTokens = maxTokensInput.trim();
+
+        const temperature = rawTemperature.length === 0 ? undefined : Number(rawTemperature);
+        if (rawTemperature.length > 0 && (!Number.isFinite(temperature) || Number.isNaN(temperature))) {
+            showToast(t('promptTemperatureInvalid'), 'warning');
+            return;
+        }
+        if (temperature !== undefined && (temperature < 0 || temperature > 2)) {
+            showToast(t('promptTemperatureInvalidRange'), 'warning');
+            return;
+        }
+
+        const maxTokens = rawMaxTokens.length === 0 ? undefined : Number.parseInt(rawMaxTokens, 10);
+        if (rawMaxTokens.length > 0 && (!Number.isFinite(maxTokens) || Number.isNaN(maxTokens))) {
+            showToast(t('promptMaxTokensInvalid'), 'warning');
+            return;
+        }
+        if (maxTokens !== undefined && (maxTokens < 1 || maxTokens > 65536)) {
+            showToast(t('promptMaxTokensInvalidRange'), 'warning');
+            return;
+        }
+
         setModelConfig({
                 textModel,
                 textProvider,
@@ -638,8 +694,8 @@ export const SettingsPage: React.FC = () => {
                 textSystemPrompt,
                 imageSystemPrompt,
                 youtubeSystemPrompt,
-                temperature: modelConfig.temperature,
-                maxTokens: modelConfig.maxTokens,
+                temperature,
+                maxTokens,
                 // Keep legacy field in sync so older data/migrations stay safe
                 systemPrompt: textSystemPrompt,
         });
@@ -725,16 +781,65 @@ export const SettingsPage: React.FC = () => {
 
                     {activeTab === 'prompts' && (
                         <div className="bg-[#252526] p-6 rounded border border-[#3e3e42] animate-slide-up">
-                            <div className="flex items-center gap-3 mb-2">
+                            <div className="flex items-start gap-3 mb-2">
                                 <Terminal className="w-8 h-8 text-yellow-400" />
-                                <div>
+                                <div className="flex-1 min-w-0">
                                     <h3 className="text-lg font-bold text-white">{t('promptsTitle')}</h3>
                                     <p className="text-xs text-[#999]">{t('promptsDesc')}</p>
+                                </div>
+                                <button
+                                    onClick={handleResetPromptsToDefault}
+                                    className="text-[10px] bg-[#3e3e42] hover:bg-[#4e4e55] text-white px-3 py-1.5 rounded transition-all font-bold uppercase"
+                                    title={t('promptReset')}
+                                >
+                                    {t('promptReset')}
+                                </button>
+                            </div>
+
+                            <div className="mt-4 text-xs text-[#999] bg-[#1e1e1e] border border-[#3e3e42] rounded p-3">
+                                {t('promptsAutoIncludedHint')}
+                            </div>
+
+                            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-[10px] font-bold text-[#666] uppercase mb-1 block">{t('promptTemperatureLabel')}</label>
+                                    <input
+                                        value={temperatureInput}
+                                        onChange={e => setTemperatureInput(e.target.value)}
+                                        inputMode="decimal"
+                                        className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-3 py-2 text-sm text-white outline-none focus:border-[#007acc]"
+                                        placeholder={t('promptTemperaturePlaceholder')}
+                                    />
+                                    <p className="text-xs text-[#666] mt-1">{t('promptTemperatureHint')}</p>
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-bold text-[#666] uppercase mb-1 block">{t('promptMaxTokensLabel')}</label>
+                                    <input
+                                        value={maxTokensInput}
+                                        onChange={e => setMaxTokensInput(e.target.value)}
+                                        inputMode="numeric"
+                                        className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-3 py-2 text-sm text-white outline-none focus:border-[#007acc]"
+                                        placeholder={t('promptMaxTokensPlaceholder')}
+                                    />
+                                    <p className="text-xs text-[#666] mt-1">{t('promptMaxTokensHint')}</p>
                                 </div>
                             </div>
 
                             <div className="mt-6">
-                                <label className="text-[10px] font-bold text-[#666] uppercase mb-1.5 block">{t('textSystemPromptLabel')}</label>
+                                <div className="flex items-center justify-between gap-3 mb-1.5">
+                                    <label className="text-[10px] font-bold text-[#666] uppercase block">{t('textSystemPromptLabel')}</label>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <span className="text-[10px] text-[#666]">{t('promptCharsLabel').replace('{count}', String(textSystemPrompt.length))}</span>
+                                        <button
+                                            onClick={() => applyDefaultPromptForField('text')}
+                                            className="text-[10px] text-[#999] hover:text-white px-2 py-1 rounded border border-[#3e3e42] hover:bg-[#2d2d2d]"
+                                            title={t('promptShowDefault')}
+                                        >
+                                            {t('promptShowDefault')}
+                                        </button>
+                                    </div>
+                                </div>
                                 <textarea
                                     value={textSystemPrompt}
                                     onChange={e => setTextSystemPrompt(e.target.value)}
@@ -744,7 +849,19 @@ export const SettingsPage: React.FC = () => {
                             </div>
 
                             <div className="mt-4">
-                                <label className="text-[10px] font-bold text-[#666] uppercase mb-1.5 block">{t('imageSystemPromptLabel')}</label>
+                                <div className="flex items-center justify-between gap-3 mb-1.5">
+                                    <label className="text-[10px] font-bold text-[#666] uppercase block">{t('imageSystemPromptLabel')}</label>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <span className="text-[10px] text-[#666]">{t('promptCharsLabel').replace('{count}', String(imageSystemPrompt.length))}</span>
+                                        <button
+                                            onClick={() => applyDefaultPromptForField('image')}
+                                            className="text-[10px] text-[#999] hover:text-white px-2 py-1 rounded border border-[#3e3e42] hover:bg-[#2d2d2d]"
+                                            title={t('promptShowDefault')}
+                                        >
+                                            {t('promptShowDefault')}
+                                        </button>
+                                    </div>
+                                </div>
                                 <textarea
                                     value={imageSystemPrompt}
                                     onChange={e => setImageSystemPrompt(e.target.value)}
@@ -754,7 +871,19 @@ export const SettingsPage: React.FC = () => {
                             </div>
 
                             <div className="mt-4">
-                                <label className="text-[10px] font-bold text-[#666] uppercase mb-1.5 block">{t('youtubeSystemPromptLabel')}</label>
+                                <div className="flex items-center justify-between gap-3 mb-1.5">
+                                    <label className="text-[10px] font-bold text-[#666] uppercase block">{t('youtubeSystemPromptLabel')}</label>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <span className="text-[10px] text-[#666]">{t('promptCharsLabel').replace('{count}', String(youtubeSystemPrompt.length))}</span>
+                                        <button
+                                            onClick={() => applyDefaultPromptForField('youtube')}
+                                            className="text-[10px] text-[#999] hover:text-white px-2 py-1 rounded border border-[#3e3e42] hover:bg-[#2d2d2d]"
+                                            title={t('promptShowDefault')}
+                                        >
+                                            {t('promptShowDefault')}
+                                        </button>
+                                    </div>
+                                </div>
                                 <textarea
                                     value={youtubeSystemPrompt}
                                     onChange={e => setYoutubeSystemPrompt(e.target.value)}

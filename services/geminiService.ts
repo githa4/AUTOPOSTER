@@ -3,6 +3,13 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { GeneratedContent, GenerationStats, ApiConfig, Model, ModelLimit, SourceType, PostMode, ApiProvider, ModelSpecs } from "../types";
 
+export const DEFAULT_TEXT_SYSTEM_PROMPT =
+    'Act as a world-class professional Telegram editor.';
+
+export const DEFAULT_IMAGE_SYSTEM_PROMPT = '';
+
+export const DEFAULT_YOUTUBE_CONTEXT_PROMPT = '';
+
 // Always initialize GoogleGenAI with named parameter apiKey.
 const getGeminiClient = (apiKey?: string) => {
   const key = apiKey || process.env.API_KEY;
@@ -255,7 +262,7 @@ export const generatePostContent = async (
     maxTokens: number = 2048
 ): Promise<GeneratedContent> => {
   const start = Date.now();
-  const system = customPrompt || "Act as a world-class professional Telegram editor.";
+    const system = customPrompt || DEFAULT_TEXT_SYSTEM_PROMPT;
   const prompt = `${system} Topic: "${topic}" Language: ${language} Tone: ${tone} Posts: ${postCount} Mode: ${postMode}
     Output JSON: { "posts": [{"headline":"", "body":""}], "hashtags":[], "imagePrompt":"", "longReadRaw":"" }`;
   
