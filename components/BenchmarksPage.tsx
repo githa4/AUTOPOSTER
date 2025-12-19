@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { OpenRouterExplorer } from './benchmarks/OpenRouterExplorer';
 import { MultiProviderExplorer } from './benchmarks/MultiProviderExplorer';
+import { ArtificialAnalysisRating } from './benchmarks/ArtificialAnalysisRating';
 
 const RankBadge = ({ rank }: { rank: number }) => {
     if (rank === 1) return <div className="w-6 h-6 rounded bg-yellow-500/20 text-yellow-500 flex items-center justify-center font-bold text-xs border border-yellow-500/50">1</div>;
@@ -281,6 +282,9 @@ export const BenchmarksPage: React.FC = () => {
                         </a>
                     </div>
                 </div>
+
+                {/* Рейтинг от Artificial Analysis */}
+                <ArtificialAnalysisRating />
 
                 {/* Мульти-провайдерный рейтинг */}
                 <MultiProviderExplorer />
