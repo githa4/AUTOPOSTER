@@ -3,6 +3,22 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { GeneratedContent, GenerationStats, ApiConfig, Model, ModelLimit, SourceType, PostMode, ApiProvider, ModelSpecs } from "../types";
 
+const CORS_PROXY_URL = 'https://corsproxy.io/?';
+
+const fetchWithCorsProxyFallback = async (
+    url: string,
+    init: RequestInit,
+    signal?: AbortSignal,
+): Promise<Response> => {
+    try {
+        return await fetch(url, { ...init, signal });
+    } catch (e: any) {
+        // In browsers, CORS failures often surface as a generic TypeError: Failed to fetch.
+        const proxiedUrl = `${CORS_PROXY_URL}${encodeURIComponent(url)}`;
+        return fetch(proxiedUrl, { ...init, signal });
+    }
+};
+
 export const DEFAULT_TEXT_SYSTEM_PROMPT =
     'Act as a world-class professional Telegram editor.';
 
@@ -85,7 +101,11 @@ export const testTextGeneration = async (modelId: string, provider: ApiProvider,
             tokens: response.usageMetadata?.totalTokenCount || 0
         };
     }
-    const url = provider === 'kie' ? "https://api.kie.ai/v1" : "https://openrouter.ai/api/v1";
+    const url = provider === 'kie'
+        ? "https://api.kie.ai/v1"
+        : provider === 'openai'
+            ? "https://api.openai.com/v1"
+            : "https://openrouter.ai/api/v1";
     const headers: Record<string, string> = {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
@@ -142,7 +162,19 @@ export const testTextGeneration = async (modelId: string, provider: ApiProvider,
         }
     }
 
-    const resp = await fetch(`${url}/chat/completions`, {
+    const resp = provider === 'openai'
+        ? await fetchWithCorsProxyFallback(
+            `${url}/chat/completions`,
+            {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    model: resolvedModelId,
+                    messages: [{ role: 'user', content: 'Hello, this is a test.' }],
+                }),
+            },
+        )
+        : await fetch(`${url}/chat/completions`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -205,7 +237,12 @@ export const getAvailableModels = async (apiConfig: ApiConfig, specificProvider?
   let models: Model[] = [...CORE_MODELS];
   const fetchCompat = async (url: string, key: string, prov: ApiProvider) => {
       try {
-          const res = await fetch(`${url}/models`, { headers: { "Authorization": `Bearer ${key}` } });
+          const res = prov === 'openai'
+              ? await fetchWithCorsProxyFallback(
+                  `${url}/models`,
+                  { headers: { "Authorization": `Bearer ${key}` } },
+              )
+              : await fetch(`${url}/models`, { headers: { "Authorization": `Bearer ${key}` } });
           if (!res.ok) return [];
           const json = await res.json();
           return (json.data || []).map((m: any) => ({
@@ -215,6 +252,10 @@ export const getAvailableModels = async (apiConfig: ApiConfig, specificProvider?
           }));
       } catch { return []; }
   };
+  if ((!specificProvider || specificProvider === 'openai') && apiConfig.openaiKey) {
+      const oa = await fetchCompat("https://api.openai.com/v1", apiConfig.openaiKey, 'openai');
+      models = [...models, ...oa];
+  }
   if ((!specificProvider || specificProvider === 'openrouter') && apiConfig.openRouterKey) {
       const or = await fetchCompat("https://openrouter.ai/api/v1", apiConfig.openRouterKey, 'openrouter');
       models = [...models, ...or];
@@ -282,20 +323,46 @@ export const generatePostContent = async (
     return { ...JSON.parse(res.text || '{}'), textStats: { modelName, latencyMs: Date.now() - start, inputTokens: res.usageMetadata?.promptTokenCount || 0, outputTokens: res.usageMetadata?.candidatesTokenCount || 0, totalTokens: res.usageMetadata?.totalTokenCount || 0 } };
   }
   
-  const url = provider === 'kie' ? "https://api.kie.ai/v1" : "https://openrouter.ai/api/v1";
-  const key = provider === 'kie' ? apiConfig.kieKey : apiConfig.openRouterKey;
-  const resp = await fetch(`${url}/chat/completions`, {
-    method: "POST", 
-    headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ 
-        model: modelName, 
-        messages: [{ role: "user", content: prompt }], 
-        response_format: { type: "json_object" },
-        temperature: temperature,
-        max_tokens: maxTokens
-    }), 
-    signal
-  });
+  const baseUrl = provider === 'kie'
+      ? "https://api.kie.ai/v1"
+      : provider === 'openai'
+          ? "https://api.openai.com/v1"
+          : "https://openrouter.ai/api/v1";
+
+  const key = provider === 'kie'
+      ? apiConfig.kieKey
+      : provider === 'openai'
+          ? apiConfig.openaiKey
+          : apiConfig.openRouterKey;
+
+  const requestInit: RequestInit = {
+      method: "POST",
+      headers: {
+          "Authorization": `Bearer ${key}`,
+          "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+          model: modelName,
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" },
+          temperature: temperature,
+          max_tokens: maxTokens,
+      }),
+  };
+
+  const resp = provider === 'openai'
+      ? await fetchWithCorsProxyFallback(`${baseUrl}/chat/completions`, requestInit, signal)
+      : await fetch(`${baseUrl}/chat/completions`, { ...requestInit, signal });
+
   const data = await resp.json();
-  return { ...JSON.parse(data.choices?.[0]?.message?.content || '{}'), textStats: { modelName, latencyMs: Date.now() - start, inputTokens: data.usage?.prompt_tokens || 0, outputTokens: data.usage?.completion_tokens || 0, totalTokens: data.usage?.total_tokens || 0 } };
+  return {
+      ...JSON.parse(data.choices?.[0]?.message?.content || '{}'),
+      textStats: {
+          modelName,
+          latencyMs: Date.now() - start,
+          inputTokens: data.usage?.prompt_tokens || 0,
+          outputTokens: data.usage?.completion_tokens || 0,
+          totalTokens: data.usage?.total_tokens || 0,
+      },
+  };
 };

@@ -35,6 +35,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   // API & Model State
   const [provider, setProvider] = useState<ApiProvider>('gemini');
   const [geminiKey, setGeminiKey] = useState('');
+  const [openaiKey, setOpenaiKey] = useState('');
   const [openRouterKey, setOpenRouterKey] = useState('');
   
   const [textModel, setTextModel] = useState('');
@@ -49,6 +50,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       
       setProvider(apiConfig.provider);
       setGeminiKey(apiConfig.geminiKey || '');
+      setOpenaiKey(apiConfig.openaiKey || '');
       setOpenRouterKey(apiConfig.openRouterKey || '');
       
       setTextModel(modelConfig.textModel);
@@ -68,6 +70,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         ...apiConfig,
         provider: p, 
         geminiKey: p === 'gemini' ? key : apiConfig.geminiKey, 
+        openaiKey: p === 'openai' ? key : apiConfig.openaiKey,
         openRouterKey: p === 'openrouter' ? key : apiConfig.openRouterKey 
       });
       setAvailableModels(models);
@@ -98,6 +101,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         ...apiConfig,
         provider, 
         geminiKey, 
+      openaiKey,
         openRouterKey 
     });
     setModelConfig({ 

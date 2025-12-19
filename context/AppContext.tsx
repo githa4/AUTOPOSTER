@@ -128,6 +128,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return {
         provider: 'gemini', 
         geminiKey: getDef('gemini'),
+                openaiKey: getDef('openai'),
         openRouterKey: getDef('openrouter'),
         kieKey: getDef('kie'),
         replicateKey: getDef('replicate')

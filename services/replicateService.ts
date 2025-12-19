@@ -272,7 +272,7 @@ export const testImageGeneration = async (
     const prompt = "A single red sphere, 3d render";
     const apiConfig = { 
         provider: 'replicate' as any, 
-        geminiKey: '', openRouterKey: '', kieKey: '', 
+        geminiKey: '', openaiKey: '', openRouterKey: '', kieKey: '', 
         replicateKey: apiKey 
     };
 

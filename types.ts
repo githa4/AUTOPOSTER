@@ -121,7 +121,7 @@ export interface TelegramConfig {
   messageThreadId?: string; 
 }
 
-export type ApiProvider = 'gemini' | 'openrouter' | 'kie' | 'replicate';
+export type ApiProvider = 'gemini' | 'openai' | 'openrouter' | 'kie' | 'replicate';
 export type ImageProvider = 'gemini' | 'replicate';
 
 // --- NEW API KEY SYSTEM ---
@@ -137,6 +137,7 @@ export interface ApiKeyEntry {
 export interface ApiConfig {
   provider: ApiProvider;
   geminiKey: string;     
+  openaiKey: string;
   openRouterKey: string;
   kieKey: string;
   replicateKey?: string; 

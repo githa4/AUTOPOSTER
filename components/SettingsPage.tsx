@@ -10,6 +10,7 @@ import {
 } from '../services/geminiService';
 import { testTelegramConnection } from '../services/telegramService';
 import { testImageGeneration } from '../services/replicateService';
+import { fetchModelsForProvider, getCacheStatus, clearModelCache, getStaticModels, getLatestModels } from '../services/modelRegistryService';
 import { ApiProvider, Model, ImageProvider, IntegrationProvider, Integration, ApiKeyEntry } from '../types';
 import { supabase } from '../lib/supabaseClient'; 
 import { ModelManagerModal } from './ModelManager'; 
@@ -26,15 +27,9 @@ const GEMINI_IMAGE_MODELS = [
   { id: 'gemini-3-pro-image-preview', name: 'Gemini 3.0 Pro Image (High Quality)', description: "High-fidelity, text-following image generation." },
 ];
 
-const REPLICATE_IMAGE_MODELS = [
-    { id: 'black-forest-labs/flux-schnell', name: 'FLUX.1 Schnell', description: "Fastest state-of-the-art open model." },
-    { id: 'black-forest-labs/flux-dev', name: 'FLUX.1 Dev', description: "Professional grade, high detail." },
-    { id: 'stability-ai/sdxl', name: 'Stable Diffusion XL (SDXL)', description: "Classic reliable high-res generation." },
-    { id: 'recraft-ai/recraft-v3', name: 'Recraft V3', description: "Best for Vector Art and Illustrations." },
-    { id: 'ai-forever/kandinsky-2.2', name: 'Kandinsky 2.2', description: "Russian-native artistic model." },
-];
+// REPLICATE_IMAGE_MODELS теперь загружаются динамически из modelRegistryService
 
-type SettingsTab = 'gemini' | 'kie' | 'openrouter' | 'replicate' | 'prompts' | 'telegram';
+type SettingsTab = 'gemini' | 'openai' | 'kie' | 'openrouter' | 'replicate' | 'prompts' | 'telegram';
 
 // --- API WALLET COMPONENT ---
 const ApiWallet = ({ provider, keys, onAdd, onUpdate, onDelete, onSetDefault, onFetch }: { 
@@ -492,11 +487,44 @@ const ApiConnectionStatus = ({ status }: any) => {
     if (!status) return null;
     const isSuccess = status.success || (status.isFallback && status.count > 0);
     const dateStr = new Date(status.timestamp).toLocaleTimeString();
+    
+    // Форматируем возраст кэша
+    const formatCacheAge = (ms: number) => {
+        if (!ms) return '';
+        const hours = Math.floor(ms / (1000 * 60 * 60));
+        const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+        if (hours > 0) return `${hours}ч ${minutes}м`;
+        return `${minutes}м`;
+    };
+    
     return (
-        <div className={`mt-4 rounded-md border p-4 animate-fade-in ${isSuccess ? 'bg-green-900/10 border-green-500/20' : 'bg-red-900/10 border-red-500/20'}`}>
+        <div className={`mt-4 rounded-md border p-4 animate-fade-in ${isSuccess ? 'bg-green-900/10 border-green-500/20' : status.isFallback ? 'bg-yellow-900/10 border-yellow-500/20' : 'bg-red-900/10 border-red-500/20'}`}>
             <div className="flex items-start gap-3">
-                <div className={`mt-0.5 p-1 rounded-full ${isSuccess ? 'bg-green-500/20 text-green-400' : 'bg-red-900/10 border-red-500/20'}`}>{isSuccess ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}</div>
-                <div className="flex-1"><h4 className={`text-sm font-bold mb-1 ${isSuccess ? 'text-green-400' : 'text-red-400'}`}>{isSuccess ? t('testSuccess') : t('testFailed')}</h4>{isSuccess ? (<div className="flex items-center gap-4 mt-2"><div className="flex items-center gap-2 text-[10px] text-[#ccc]"><Database className="w-3.5 h-3.5 text-blue-400" /> {status.count} {t('tabModels').toLowerCase()}</div><div className="text-[10px] text-[#666] ml-auto">{t('benchUpdate')}: {dateStr}</div></div>) : (<p className="text-xs text-[#ccc] mt-1 font-mono">{status.message}</p>)}</div>
+                <div className={`mt-0.5 p-1 rounded-full ${isSuccess ? 'bg-green-500/20 text-green-400' : status.isFallback ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'}`}>
+                    {isSuccess ? <CheckCircle2 className="w-4 h-4" /> : status.isFallback ? <AlertCircle className="w-4 h-4" /> : <X className="w-4 h-4" />}
+                </div>
+                <div className="flex-1">
+                    <h4 className={`text-sm font-bold mb-1 ${isSuccess ? 'text-green-400' : status.isFallback ? 'text-yellow-400' : 'text-red-400'}`}>
+                        {isSuccess ? t('testSuccess') : status.isFallback ? 'Fallback Models' : t('testFailed')}
+                    </h4>
+                    {isSuccess || status.isFallback ? (
+                        <div className="flex flex-wrap items-center gap-4 mt-2">
+                            <div className="flex items-center gap-2 text-[10px] text-[#ccc]">
+                                <Database className="w-3.5 h-3.5 text-blue-400" /> 
+                                {status.count} {t('tabModels').toLowerCase()}
+                            </div>
+                            {status.cached && (
+                                <div className="flex items-center gap-1.5 text-[10px] text-[#888] bg-[#333] px-2 py-0.5 rounded">
+                                    <Clock className="w-3 h-3" />
+                                    Кэш: {formatCacheAge(status.cacheAge)}
+                                </div>
+                            )}
+                            <div className="text-[10px] text-[#666] ml-auto">{t('benchUpdate')}: {dateStr}</div>
+                        </div>
+                    ) : (
+                        <p className="text-xs text-[#ccc] mt-1 font-mono">{status.message}</p>
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -563,6 +591,7 @@ export const SettingsPage: React.FC = () => {
       try {
           let testModelId = '';
           if (provider === 'gemini') testModelId = 'gemini-2.5-flash';
+          else if (provider === 'openai') testModelId = 'gpt-4o-mini';
           else if (provider === 'kie') testModelId = 'deepseek-v3';
           else if (provider === 'openrouter') testModelId = 'google/gemini-flash-1.5';
           else if (provider === 'replicate') {
@@ -584,6 +613,21 @@ export const SettingsPage: React.FC = () => {
       try { const saved = localStorage.getItem('autopost_custom_models'); return saved ? JSON.parse(saved) : []; } catch { return []; }
   });
   useEffect(() => { localStorage.setItem('autopost_custom_models', JSON.stringify(customReplicateModels)); }, [customReplicateModels]);
+
+  // Автозагрузка моделей при смене вкладки провайдера (если есть ключ и нет моделей)
+  useEffect(() => {
+      if (activeTab === 'prompts' || activeTab === 'telegram') return;
+      
+      const provider = activeTab as ApiProvider;
+      const key = getDefaultKeyForProvider(provider);
+      const hasModels = availableModels.some(m => m.provider === provider);
+      const cacheInfo = getCacheStatus(provider);
+      
+      // Загружаем если: есть ключ И (нет моделей в памяти ИЛИ есть валидный кэш)
+      if (key && !hasModels) {
+          handleFetchModels(provider, key, false);
+      }
+  }, [activeTab]);
 
   const [fetchStatus, setFetchStatus] = useState<{ provider: string; count: number; success: boolean; message?: string; timestamp: number; isFallback?: boolean; } | null>(null);
 
@@ -629,34 +673,60 @@ export const SettingsPage: React.FC = () => {
       try { await testTelegramConnection(configToTest); showToast(t('testSuccess'), 'success'); } catch (e: any) { showToast(e.message, 'error'); }
   };
 
-  const handleFetchModels = async (p: ApiProvider, key: string) => {
-        if (!key) { showToast(t('errApiKeyMissing'), 'warning'); return; }
-    setIsFetchingModels(true); setFetchStatus(null); 
+    const handleFetchModels = async (p: ApiProvider, key: string, forceRefresh: boolean = false) => {
+                if (!key) { showToast(t('errApiKeyMissing'), 'warning'); return; }
+
+        // Сразу показываем 10 самых свежих (из кэша/фолбэка), чтобы UI был быстрым
+        if (!forceRefresh) {
+                const latest10 = getLatestModels(p, 10);
+                setAvailableModels((prev) => {
+                        const filtered = prev.filter(m => m.provider !== p);
+                        return [...filtered, ...latest10];
+                });
+        }
+
+        setIsFetchingModels(true); setFetchStatus(null);
     try {
-      let newModels: Model[] = [];
-      if (p === 'replicate') {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          const combined = [...REPLICATE_IMAGE_MODELS, ...customReplicateModels.map(m => ({...m, description: 'Custom saved model'}))];
-          newModels = combined.map(m => ({ id: m.id, name: m.name, provider: 'replicate', description: m.description, isFree: false, created: Date.now() / 1000, contextLength: 0 }));
-      } else {
-          newModels = await getAvailableModels({ ...apiConfig, [p === 'kie' ? 'kieKey' : (p === 'openrouter' ? 'openRouterKey' : 'geminiKey')]: key }, p);
+      // Используем универсальный сервис для всех провайдеров
+      let newModels = await fetchModelsForProvider(p, { apiKey: key, forceRefresh });
+      
+      // Добавляем кастомные модели для replicate
+      if (p === 'replicate' && customReplicateModels.length > 0) {
+          const customIds = new Set(newModels.map(m => m.id));
+          const uniqueCustom = customReplicateModels
+              .filter(m => !customIds.has(m.id))
+              .map(m => ({ ...m, description: 'Custom saved model' }));
+          newModels = [...newModels, ...uniqueCustom];
       }
+      
       setAvailableModels((prev) => { const filtered = prev.filter(m => m.provider !== p); return [...filtered, ...newModels]; });
 
-            // Autopick first valid model for roles that depend on provider p
-            if (p !== 'replicate' && newModels.length > 0) {
-                    const firstId = newModels[0]?.id || '';
-                    if (textProvider === p && !newModels.some(m => m.id === textModel)) {
-                            setTextModel(firstId);
-                    }
-                    if (youtubeProvider === p && !newModels.some(m => m.id === youtubeModel)) {
-                            setYoutubeModel(firstId);
-                    }
-            }
+      // Autopick first valid model for roles that depend on provider p
+      if (p !== 'replicate' && newModels.length > 0) {
+          const firstId = newModels[0]?.id || '';
+          if (textProvider === p && !newModels.some(m => m.id === textModel)) {
+              setTextModel(firstId);
+          }
+          if (youtubeProvider === p && !newModels.some(m => m.id === youtubeModel)) {
+              setYoutubeModel(firstId);
+          }
+      }
 
-      setFetchStatus({ provider: p, count: newModels.length, success: newModels.length > 0, timestamp: Date.now(), isFallback: p === 'kie' });
+      const cacheInfo = getCacheStatus(p);
+      setFetchStatus({ 
+          provider: p, 
+          count: newModels.length, 
+          success: newModels.length > 0, 
+          timestamp: Date.now(), 
+          isFallback: false,
+          cached: cacheInfo.isCached,
+          cacheAge: cacheInfo.age
+      });
     } catch (e: any) {
-      setFetchStatus({ provider: p, count: 0, success: false, message: e.message, timestamp: Date.now() });
+      // При ошибке используем статические модели
+      const fallback = getStaticModels(p);
+      setAvailableModels((prev) => { const filtered = prev.filter(m => m.provider !== p); return [...filtered, ...fallback]; });
+      setFetchStatus({ provider: p, count: fallback.length, success: false, message: e.message, timestamp: Date.now(), isFallback: true });
     } finally { setIsFetchingModels(false); }
   };
 
@@ -716,7 +786,19 @@ export const SettingsPage: React.FC = () => {
   };
 
   const getModelsByProvider = (p: ApiProvider) => availableModels.filter(m => m.provider === p);
-  const getFilteredImageModels = (provider: string) => provider === 'gemini' ? GEMINI_IMAGE_MODELS : [...REPLICATE_IMAGE_MODELS, ...customReplicateModels];
+  
+  // Для изображений: Gemini использует статические модели, Replicate — из availableModels
+  const getFilteredImageModels = (provider: string) => {
+      if (provider === 'gemini') return GEMINI_IMAGE_MODELS;
+      // Для Replicate берём модели из общего списка + кастомные
+      const replicateModels = availableModels.filter(m => m.provider === 'replicate');
+      const staticFallback = replicateModels.length === 0 ? getStaticModels('replicate') : [];
+      const allReplicate = [...replicateModels, ...staticFallback];
+      // Добавляем кастомные модели, которых ещё нет
+      const existingIds = new Set(allReplicate.map(m => m.id));
+      const uniqueCustom = customReplicateModels.filter(m => !existingIds.has(m.id));
+      return [...allReplicate, ...uniqueCustom];
+  };
 
   const NavItem = ({ id, icon: Icon, label, colorClass }: any) => (
       <button
@@ -734,6 +816,7 @@ export const SettingsPage: React.FC = () => {
           <div className="h-14 flex items-center px-6 border-b border-[#1e1e1e]"><span className="text-xs font-bold uppercase tracking-widest text-[#cccccc] flex items-center gap-2"><Sliders className="w-4 h-4" /> {t('lblIntegrations')}</span></div>
           <div className="p-4 flex-1 overflow-y-auto">
               <NavItem id="gemini" icon={Globe} label={t('providerGeminiTitle')} colorClass="text-blue-400" />
+              <NavItem id="openai" icon={Brain} label={t('providerOpenAiTitle')} colorClass="text-emerald-400" />
               <NavItem id="kie" icon={HardDrive} label={t('providerKieTitle')} colorClass="text-green-400" />
               <NavItem id="openrouter" icon={Server} label={t('providerOpenRouterTitle')} colorClass="text-purple-400" />
               <NavItem id="replicate" icon={Palette} label={t('providerReplicateTitle')} colorClass="text-orange-400" />
@@ -754,19 +837,30 @@ export const SettingsPage: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-8 custom-scrollbar" ref={scrollRef}>
             <div className="max-w-5xl mx-auto flex flex-col gap-8 pb-20">
                 <div className="min-h-[200px]">
-                    {(activeTab === 'gemini' || activeTab === 'kie' || activeTab === 'openrouter' || activeTab === 'replicate') && (
+                    {(activeTab === 'gemini' || activeTab === 'openai' || activeTab === 'kie' || activeTab === 'openrouter' || activeTab === 'replicate') && (
                         <div className="bg-[#252526] p-6 rounded border border-[#3e3e42] animate-slide-up">
                             <div className="flex items-center gap-3 mb-6">
                                 {activeTab === 'gemini' && <Globe className="w-8 h-8 text-blue-400" />}
+                                {activeTab === 'openai' && <Brain className="w-8 h-8 text-emerald-400" />}
                                 {activeTab === 'kie' && <HardDrive className="w-8 h-8 text-green-400" />}
                                 {activeTab === 'openrouter' && <Server className="w-8 h-8 text-purple-400" />}
                                 {activeTab === 'replicate' && <Palette className="w-8 h-8 text-orange-400" />}
                                 <div><h3 className="text-lg font-bold text-white capitalize">{activeTab.toUpperCase()} {t('walletTitle')}</h3><p className="text-xs text-[#999]">{t('walletDesc')}</p></div>
-                                <div className="ml-auto">
+                                <div className="ml-auto flex items-center gap-2">
+                                    <button 
+                                        onClick={() => handleFetchModels(activeTab as ApiProvider, apiKeys.find(k => k.provider === activeTab && k.isDefault)?.key || '', true)} 
+                                        disabled={isFetchingModels}
+                                        className="text-[10px] bg-[#252526] hover:bg-[#333] text-[#888] hover:text-white px-2.5 py-1.5 rounded transition-all font-bold uppercase border border-[#3e3e42] flex items-center gap-1.5"
+                                        title="Force refresh models (ignore cache)"
+                                    >
+                                        <RefreshCw className={`w-3 h-3 ${isFetchingModels ? 'animate-spin' : ''}`} />
+                                        {isFetchingModels ? '...' : 'Refresh'}
+                                    </button>
                                     <button onClick={() => runKeyTest(activeTab, apiKeys.find(k => k.provider === activeTab && k.isDefault)?.key || '')} className="text-[10px] bg-[#3e3e42] hover:bg-[#4e4e55] text-white px-3 py-1.5 rounded transition-all font-bold uppercase">{t('btnVerifyKey')}</button>
                                 </div>
                             </div>
                             <ApiWallet 
+                                key={activeTab}
                                 provider={activeTab as ApiProvider}
                                 keys={apiKeys}
                                 onAdd={addApiKey}
@@ -776,120 +870,284 @@ export const SettingsPage: React.FC = () => {
                                 onFetch={handleFetchModels}
                             />
                             {fetchStatus && fetchStatus.provider === activeTab && <ApiConnectionStatus status={fetchStatus} />}
+                            
+                            {/* Models List Section */}
+                            {(() => {
+                                const providerModels = availableModels.filter(m => m.provider === activeTab);
+                                const providerModelsSorted = [...availableModels]
+                                    .filter(m => m.provider === activeTab)
+                                    .sort((a, b) => ((b.created || 0) - (a.created || 0)));
+
+                                const latest10 = providerModelsSorted.slice(0, 10);
+                                const restModels = providerModelsSorted.slice(10);
+                                const cacheInfo = getCacheStatus(activeTab as ApiProvider);
+                                if (providerModelsSorted.length === 0 && !cacheInfo.isCached) return null;
+                                
+                                return (
+                                    <div className="mt-6 bg-[#1e1e1e] rounded border border-[#3e3e42]">
+                                        <div className="flex items-center justify-between px-4 py-3 border-b border-[#3e3e42]">
+                                            <div className="flex items-center gap-2">
+                                                <LayoutGrid className="w-4 h-4 text-[#666]" />
+                                                <span className="text-xs font-bold text-[#999] uppercase">
+                                                    Доступные модели ({providerModelsSorted.length})
+                                                </span>
+                                                {cacheInfo.isCached && (
+                                                    <span className="text-[9px] bg-[#333] text-[#888] px-1.5 py-0.5 rounded">
+                                                        из кэша
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
+                                            {providerModelsSorted.length === 0 ? (
+                                                <div className="p-4 text-center text-xs text-[#666]">
+                                                    Нажмите "Refresh" чтобы загрузить модели
+                                                </div>
+                                            ) : (
+                                                <div className="divide-y divide-[#2a2a2a]">
+                                                    {/* Latest 10 */}
+                                                    {latest10.map(m => (
+                                                        <div key={m.id} className="px-4 py-2.5 hover:bg-[#252526] transition-colors group">
+                                                            <div className="flex items-start justify-between gap-3">
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-xs font-medium text-white truncate">{m.name}</span>
+                                                                        {m.isFree && (
+                                                                            <span className="text-[8px] bg-green-900/30 text-green-400 px-1 rounded uppercase font-bold">free</span>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="text-[10px] text-[#666] font-mono truncate mt-0.5">{m.id}</div>
+                                                                </div>
+                                                                <div className="flex items-center gap-3 text-[10px] text-[#555] shrink-0">
+                                                                    {m.contextLength && m.contextLength > 0 && (
+                                                                        <span className="flex items-center gap-1">
+                                                                            <Cpu className="w-3 h-3" />
+                                                                            {Math.round(m.contextLength / 1000)}K
+                                                                        </span>
+                                                                    )}
+                                                                    {m.pricing?.prompt && (
+                                                                        <span className="flex items-center gap-1">
+                                                                            <Coins className="w-3 h-3 text-yellow-600" />
+                                                                            {m.pricing.prompt}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            {m.description && (
+                                                                <p className="text-[10px] text-[#555] mt-1 line-clamp-1 group-hover:text-[#888] transition-colors">{m.description}</p>
+                                                            )}
+                                                        </div>
+                                                    ))}
+
+                                                    {/* Rest */}
+                                                    {restModels.slice(0, 40).map(m => (
+                                                        <div key={m.id} className="px-4 py-2.5 hover:bg-[#252526] transition-colors group">
+                                                            <div className="flex items-start justify-between gap-3">
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-xs font-medium text-white truncate">{m.name}</span>
+                                                                        {m.isFree && (
+                                                                            <span className="text-[8px] bg-green-900/30 text-green-400 px-1 rounded uppercase font-bold">free</span>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="text-[10px] text-[#666] font-mono truncate mt-0.5">{m.id}</div>
+                                                                </div>
+                                                                <div className="flex items-center gap-3 text-[10px] text-[#555] shrink-0">
+                                                                    {m.contextLength && m.contextLength > 0 && (
+                                                                        <span className="flex items-center gap-1">
+                                                                            <Cpu className="w-3 h-3" />
+                                                                            {Math.round(m.contextLength / 1000)}K
+                                                                        </span>
+                                                                    )}
+                                                                    {m.pricing?.prompt && (
+                                                                        <span className="flex items-center gap-1">
+                                                                            <Coins className="w-3 h-3 text-yellow-600" />
+                                                                            {m.pricing.prompt}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            {m.description && (
+                                                                <p className="text-[10px] text-[#555] mt-1 line-clamp-1 group-hover:text-[#888] transition-colors">{m.description}</p>
+                                                            )}
+                                                        </div>
+                                                    ))}
+
+                                                    {providerModelsSorted.length > 50 && (
+                                                        <div className="px-4 py-2 text-center text-[10px] text-[#666]">
+                                                            ... и ещё {providerModelsSorted.length - 50} моделей
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                         </div>
                     )}
 
                     {activeTab === 'prompts' && (
-                        <div className="bg-[#252526] p-6 rounded border border-[#3e3e42] animate-slide-up">
-                            <div className="flex items-start gap-3 mb-2">
-                                <Terminal className="w-8 h-8 text-yellow-400" />
-                                <div className="flex-1 min-w-0">
-                                    <h3 className="text-lg font-bold text-white">{t('promptsTitle')}</h3>
-                                    <p className="text-xs text-[#999]">{t('promptsDesc')}</p>
+                        <div className="space-y-6 animate-slide-up">
+                            {/* Header Section */}
+                            <div className="bg-[#252526] p-6 rounded border border-[#3e3e42]">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-yellow-500/10 rounded-lg">
+                                            <Terminal className="w-6 h-6 text-yellow-400" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-lg font-bold text-white">{t('promptsTitle')}</h3>
+                                            <p className="text-xs text-[#999] mt-0.5">{t('promptsDesc')}</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={handleResetPromptsToDefault}
+                                        className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[#999] hover:text-white bg-[#1e1e1e] hover:bg-[#2d2d2d] border border-[#3e3e42] rounded transition-all"
+                                        title={t('promptReset')}
+                                    >
+                                        <RefreshCw className="w-3 h-3" />
+                                        {t('promptReset')}
+                                    </button>
                                 </div>
-                                <button
-                                    onClick={handleResetPromptsToDefault}
-                                    className="text-[10px] bg-[#3e3e42] hover:bg-[#4e4e55] text-white px-3 py-1.5 rounded transition-all font-bold uppercase"
-                                    title={t('promptReset')}
-                                >
-                                    {t('promptReset')}
-                                </button>
+
+                                <div className="mt-6 flex items-start gap-3 p-3 bg-[#1e1e1e] border border-[#3e3e42] rounded text-xs text-[#999]">
+                                    <div className="mt-0.5 min-w-[16px]"><Brain className="w-4 h-4 text-blue-400" /></div>
+                                    <div>{t('promptsAutoIncludedHint')}</div>
+                                </div>
                             </div>
 
-                            <div className="mt-4 text-xs text-[#999] bg-[#1e1e1e] border border-[#3e3e42] rounded p-3">
-                                {t('promptsAutoIncludedHint')}
+                            {/* Parameters Section */}
+                            <div className="bg-[#252526] p-6 rounded border border-[#3e3e42]">
+                                <h4 className="text-xs font-bold text-[#858585] uppercase tracking-widest mb-4 flex items-center gap-2">
+                                    <Sliders className="w-4 h-4" />
+                                    {t('lblGlobalAssignments')}
+                                </h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="group">
+                                        <label className="text-[10px] font-bold text-[#666] uppercase mb-2 block group-focus-within:text-blue-400 transition-colors">
+                                            {t('promptTemperatureLabel')}
+                                        </label>
+                                        <div className="relative">
+                                            <input
+                                                value={temperatureInput}
+                                                onChange={e => setTemperatureInput(e.target.value)}
+                                                inputMode="decimal"
+                                                className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-3 py-2.5 text-sm text-white outline-none focus:border-[#007acc] transition-colors placeholder-[#444]"
+                                                placeholder={t('promptTemperaturePlaceholder')}
+                                            />
+                                            <div className="absolute right-3 top-2.5 text-xs text-[#666] pointer-events-none">0.0 - 2.0</div>
+                                        </div>
+                                        <p className="text-[10px] text-[#666] mt-1.5">{t('promptTemperatureHint')}</p>
+                                    </div>
+
+                                    <div className="group">
+                                        <label className="text-[10px] font-bold text-[#666] uppercase mb-2 block group-focus-within:text-blue-400 transition-colors">
+                                            {t('promptMaxTokensLabel')}
+                                        </label>
+                                        <div className="relative">
+                                            <input
+                                                value={maxTokensInput}
+                                                onChange={e => setMaxTokensInput(e.target.value)}
+                                                inputMode="numeric"
+                                                className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-3 py-2.5 text-sm text-white outline-none focus:border-[#007acc] transition-colors placeholder-[#444]"
+                                                placeholder={t('promptMaxTokensPlaceholder')}
+                                            />
+                                            <div className="absolute right-3 top-2.5 text-xs text-[#666] pointer-events-none">Tokens</div>
+                                        </div>
+                                        <p className="text-[10px] text-[#666] mt-1.5">{t('promptMaxTokensHint')}</p>
+                                    </div>
+                                </div>
                             </div>
 
-                            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="text-[10px] font-bold text-[#666] uppercase mb-1 block">{t('promptTemperatureLabel')}</label>
-                                    <input
-                                        value={temperatureInput}
-                                        onChange={e => setTemperatureInput(e.target.value)}
-                                        inputMode="decimal"
-                                        className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-3 py-2 text-sm text-white outline-none focus:border-[#007acc]"
-                                        placeholder={t('promptTemperaturePlaceholder')}
+                            {/* System Prompts Grid */}
+                            <div className="grid grid-cols-1 gap-6">
+                                {/* Text Prompt */}
+                                <div className="bg-[#252526] rounded border border-[#3e3e42] overflow-hidden group focus-within:border-[#007acc] transition-colors">
+                                    <div className="px-4 py-3 bg-[#2d2d2d] border-b border-[#3e3e42] flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <MessageSquare className="w-4 h-4 text-blue-400" />
+                                            <span className="text-xs font-bold text-white uppercase tracking-wider">{t('textSystemPromptLabel')}</span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-[10px] font-mono text-[#666] bg-[#1e1e1e] px-2 py-0.5 rounded border border-[#3e3e42]">
+                                                {t('promptCharsLabel').replace('{count}', String(textSystemPrompt.length))}
+                                            </span>
+                                            <button
+                                                onClick={() => applyDefaultPromptForField('text')}
+                                                className="text-[10px] text-[#858585] hover:text-white transition-colors flex items-center gap-1"
+                                                title={t('promptShowDefault')}
+                                            >
+                                                <RefreshCw className="w-3 h-3" />
+                                                {t('promptShowDefault')}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <textarea
+                                        value={textSystemPrompt}
+                                        onChange={e => setTextSystemPrompt(e.target.value)}
+                                        className="w-full bg-[#252526] p-4 text-xs text-[#e0e0e0] font-mono outline-none h-48 resize-y leading-relaxed placeholder-[#444]"
+                                        placeholder={t('textSystemPromptPlaceholder')}
                                     />
-                                    <p className="text-xs text-[#666] mt-1">{t('promptTemperatureHint')}</p>
                                 </div>
 
-                                <div>
-                                    <label className="text-[10px] font-bold text-[#666] uppercase mb-1 block">{t('promptMaxTokensLabel')}</label>
-                                    <input
-                                        value={maxTokensInput}
-                                        onChange={e => setMaxTokensInput(e.target.value)}
-                                        inputMode="numeric"
-                                        className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-3 py-2 text-sm text-white outline-none focus:border-[#007acc]"
-                                        placeholder={t('promptMaxTokensPlaceholder')}
+                                {/* Image Prompt */}
+                                <div className="bg-[#252526] rounded border border-[#3e3e42] overflow-hidden group focus-within:border-[#007acc] transition-colors">
+                                    <div className="px-4 py-3 bg-[#2d2d2d] border-b border-[#3e3e42] flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <ImageIcon className="w-4 h-4 text-purple-400" />
+                                            <span className="text-xs font-bold text-white uppercase tracking-wider">{t('imageSystemPromptLabel')}</span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-[10px] font-mono text-[#666] bg-[#1e1e1e] px-2 py-0.5 rounded border border-[#3e3e42]">
+                                                {t('promptCharsLabel').replace('{count}', String(imageSystemPrompt.length))}
+                                            </span>
+                                            <button
+                                                onClick={() => applyDefaultPromptForField('image')}
+                                                className="text-[10px] text-[#858585] hover:text-white transition-colors flex items-center gap-1"
+                                                title={t('promptShowDefault')}
+                                            >
+                                                <RefreshCw className="w-3 h-3" />
+                                                {t('promptShowDefault')}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <textarea
+                                        value={imageSystemPrompt}
+                                        onChange={e => setImageSystemPrompt(e.target.value)}
+                                        className="w-full bg-[#252526] p-4 text-xs text-[#e0e0e0] font-mono outline-none h-40 resize-y leading-relaxed placeholder-[#444]"
+                                        placeholder={t('imageSystemPromptPlaceholder')}
                                     />
-                                    <p className="text-xs text-[#666] mt-1">{t('promptMaxTokensHint')}</p>
                                 </div>
-                            </div>
 
-                            <div className="mt-6">
-                                <div className="flex items-center justify-between gap-3 mb-1.5">
-                                    <label className="text-[10px] font-bold text-[#666] uppercase block">{t('textSystemPromptLabel')}</label>
-                                    <div className="flex items-center gap-2 shrink-0">
-                                        <span className="text-[10px] text-[#666]">{t('promptCharsLabel').replace('{count}', String(textSystemPrompt.length))}</span>
-                                        <button
-                                            onClick={() => applyDefaultPromptForField('text')}
-                                            className="text-[10px] text-[#999] hover:text-white px-2 py-1 rounded border border-[#3e3e42] hover:bg-[#2d2d2d]"
-                                            title={t('promptShowDefault')}
-                                        >
-                                            {t('promptShowDefault')}
-                                        </button>
+                                {/* YouTube Prompt */}
+                                <div className="bg-[#252526] rounded border border-[#3e3e42] overflow-hidden group focus-within:border-[#007acc] transition-colors">
+                                    <div className="px-4 py-3 bg-[#2d2d2d] border-b border-[#3e3e42] flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <Youtube className="w-4 h-4 text-red-500" />
+                                            <span className="text-xs font-bold text-white uppercase tracking-wider">{t('youtubeSystemPromptLabel')}</span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-[10px] font-mono text-[#666] bg-[#1e1e1e] px-2 py-0.5 rounded border border-[#3e3e42]">
+                                                {t('promptCharsLabel').replace('{count}', String(youtubeSystemPrompt.length))}
+                                            </span>
+                                            <button
+                                                onClick={() => applyDefaultPromptForField('youtube')}
+                                                className="text-[10px] text-[#858585] hover:text-white transition-colors flex items-center gap-1"
+                                                title={t('promptShowDefault')}
+                                            >
+                                                <RefreshCw className="w-3 h-3" />
+                                                {t('promptShowDefault')}
+                                            </button>
+                                        </div>
                                     </div>
+                                    <textarea
+                                        value={youtubeSystemPrompt}
+                                        onChange={e => setYoutubeSystemPrompt(e.target.value)}
+                                        className="w-full bg-[#252526] p-4 text-xs text-[#e0e0e0] font-mono outline-none h-32 resize-y leading-relaxed placeholder-[#444]"
+                                        placeholder={t('youtubeSystemPromptPlaceholder')}
+                                    />
                                 </div>
-                                <textarea
-                                    value={textSystemPrompt}
-                                    onChange={e => setTextSystemPrompt(e.target.value)}
-                                    className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded p-3 text-xs text-[#ccc] font-mono outline-none focus:border-[#007acc] h-36 resize-none"
-                                    placeholder={t('textSystemPromptPlaceholder')}
-                                />
-                            </div>
-
-                            <div className="mt-4">
-                                <div className="flex items-center justify-between gap-3 mb-1.5">
-                                    <label className="text-[10px] font-bold text-[#666] uppercase block">{t('imageSystemPromptLabel')}</label>
-                                    <div className="flex items-center gap-2 shrink-0">
-                                        <span className="text-[10px] text-[#666]">{t('promptCharsLabel').replace('{count}', String(imageSystemPrompt.length))}</span>
-                                        <button
-                                            onClick={() => applyDefaultPromptForField('image')}
-                                            className="text-[10px] text-[#999] hover:text-white px-2 py-1 rounded border border-[#3e3e42] hover:bg-[#2d2d2d]"
-                                            title={t('promptShowDefault')}
-                                        >
-                                            {t('promptShowDefault')}
-                                        </button>
-                                    </div>
-                                </div>
-                                <textarea
-                                    value={imageSystemPrompt}
-                                    onChange={e => setImageSystemPrompt(e.target.value)}
-                                    className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded p-3 text-xs text-[#ccc] font-mono outline-none focus:border-[#007acc] h-36 resize-none"
-                                    placeholder={t('imageSystemPromptPlaceholder')}
-                                />
-                            </div>
-
-                            <div className="mt-4">
-                                <div className="flex items-center justify-between gap-3 mb-1.5">
-                                    <label className="text-[10px] font-bold text-[#666] uppercase block">{t('youtubeSystemPromptLabel')}</label>
-                                    <div className="flex items-center gap-2 shrink-0">
-                                        <span className="text-[10px] text-[#666]">{t('promptCharsLabel').replace('{count}', String(youtubeSystemPrompt.length))}</span>
-                                        <button
-                                            onClick={() => applyDefaultPromptForField('youtube')}
-                                            className="text-[10px] text-[#999] hover:text-white px-2 py-1 rounded border border-[#3e3e42] hover:bg-[#2d2d2d]"
-                                            title={t('promptShowDefault')}
-                                        >
-                                            {t('promptShowDefault')}
-                                        </button>
-                                    </div>
-                                </div>
-                                <textarea
-                                    value={youtubeSystemPrompt}
-                                    onChange={e => setYoutubeSystemPrompt(e.target.value)}
-                                    className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded p-3 text-xs text-[#ccc] font-mono outline-none focus:border-[#007acc] h-28 resize-none"
-                                    placeholder={t('youtubeSystemPromptPlaceholder')}
-                                />
                             </div>
                         </div>
                     )}
@@ -932,7 +1190,7 @@ export const SettingsPage: React.FC = () => {
                             provider={textProvider}
                             setProvider={setTextProvider}
                             getFirstModelId={(p: ApiProvider) => getModelsByProvider(p)[0]?.id || ''}
-                            providerOptions={[{ value: 'gemini', label: 'Google Gemini' }, { value: 'kie', label: 'Kie.ai' }, { value: 'openrouter', label: 'OpenRouter' }]}
+                            providerOptions={[{ value: 'gemini', label: 'Google Gemini' }, { value: 'openai', label: 'OpenAI (ChatGPT)' }, { value: 'kie', label: 'Kie.ai' }, { value: 'openrouter', label: 'OpenRouter' }]}
                             model={textModel}
                             setModel={setTextModel}
                             modelOptions={getModelsByProvider(textProvider)}
@@ -940,6 +1198,7 @@ export const SettingsPage: React.FC = () => {
                             availableModels={availableModels}
                             getKeys={() => ({
                                 gemini: getDefaultKeyForProvider('gemini'),
+                                openai: getDefaultKeyForProvider('openai'),
                                 kie: getDefaultKeyForProvider('kie'),
                                 openrouter: getDefaultKeyForProvider('openrouter'),
                                 replicate: getDefaultKeyForProvider('replicate'),
@@ -956,7 +1215,7 @@ export const SettingsPage: React.FC = () => {
                             provider={youtubeProvider}
                             setProvider={setYoutubeProvider}
                             getFirstModelId={(p: ApiProvider) => getModelsByProvider(p)[0]?.id || ''}
-                            providerOptions={[{ value: 'gemini', label: 'Google Gemini' }, { value: 'kie', label: 'Kie.ai' }, { value: 'openrouter', label: 'OpenRouter' }]}
+                            providerOptions={[{ value: 'gemini', label: 'Google Gemini' }, { value: 'openai', label: 'OpenAI (ChatGPT)' }, { value: 'kie', label: 'Kie.ai' }, { value: 'openrouter', label: 'OpenRouter' }]}
                             model={youtubeModel}
                             setModel={setYoutubeModel}
                             modelOptions={getModelsByProvider(youtubeProvider)}
@@ -964,6 +1223,7 @@ export const SettingsPage: React.FC = () => {
                             availableModels={availableModels}
                             getKeys={() => ({
                                 gemini: getDefaultKeyForProvider('gemini'),
+                                openai: getDefaultKeyForProvider('openai'),
                                 kie: getDefaultKeyForProvider('kie'),
                                 openrouter: getDefaultKeyForProvider('openrouter'),
                                 replicate: getDefaultKeyForProvider('replicate'),
@@ -988,6 +1248,7 @@ export const SettingsPage: React.FC = () => {
                             availableModels={availableModels}
                             getKeys={() => ({
                                 gemini: getDefaultKeyForProvider('gemini'),
+                                openai: getDefaultKeyForProvider('openai'),
                                 kie: getDefaultKeyForProvider('kie'),
                                 openrouter: getDefaultKeyForProvider('openrouter'),
                                 replicate: getDefaultKeyForProvider('replicate'),
