@@ -2,20 +2,158 @@
 
 ---
 
+#️⃣ [Unreleased] 📅 2025-12-21 🕤 01:15
+
+▶️ **Тема коммита:** `✨ Рейтинг ИИ: Добавлены ВСЕ 117 моделей из Artificial Analysis LEADERBOARD`
+
+✅ Добавлено (21 декабря 2025)
+- **🏆 ПОЛНОЕ покрытие LEADERBOARD** — все 117 моделей из Artificial Analysis (декабрь 2025)
+
+- **📊 Провайдеры обновлены:**
+  - **API2D**: 60 моделей (LLM × 33, Vision × 7, Code × 20)
+  - **FAL**: 40 моделей (Image × 20, Video × 20)
+  - **Kie**: 64 модели (Image × 20, Video × 20, Music × 10, TTS × 14)
+  - **Replicate**: 58 моделей (LLM × 13, Code × 6, Image × 15, Video × 13, Music × 5, TTS × 5)
+
+- **🎯 Покрытие по категориям:**
+  - 📝 **LLM/Text**: 53 модели (ELO 1490-1103)
+    - Gemini 3 Pro (1490), Claude Opus 4.5 (1469), Grok-4.1 Thinking (1477)
+    - GPT-5.2, o3, DeepSeek V3.2, Qwen3 235B, Llama 4, Mistral Large 3
+  - 🖼️ **Vision/Multimodal**: 7 моделей (ELO 1224-1202)
+    - GPT-4.1, Gemini 2.5 Flash/Pro, Qwen3 VL, ERNIE 5.0 Vision
+  - 💻 **Code**: 26 моделей (ELO 1518-1103)
+    - Claude Opus 4.5 Code (1518), GPT-5.2 High (1485), Gemini 3 Pro (1481)
+  - 🎨 **Image**: 20 моделей × 3 провайдера (ELO 1261-1128)
+    - GPT Image 1.5, Nano Banana Pro, FLUX.2 [max/pro/flex/dev]
+    - Seedream 4.5/4.0/3.0, Imagen 4, Ideogram 3.0/2.0, Z-Image, Kolors, Recraft V3
+  - 🎬 **Video**: 20 моделей × 3 провайдера (ELO 1243-1158)
+    - Runway Gen-4.5, Veo 3.1/3/2, Kling 2.5/2.1/2.0 Pro, Luma Ray 3/2
+    - Sora 2, Hailuo T2V Director/01, LTX-Video 2, Seedance, Wan 2.1, Pika 2.0
+  - 🎵 **Music**: 10 моделей (ELO 1109-832)
+    - Suno V4.5/V4/V3.5, Eleven Music, FUZZ, Lyria 2, Udio V1.5
+    - Stable Audio 2, MusicGen Stereo/Mono
+  - 🎙️ **TTS**: 14 моделей (ELO 1164-1061)
+    - Inworld TTS, MiniMax Speech-02, ElevenLabs Turbo V2.5
+    - OpenAI TTS-1-HD/TTS-1, Fish Audio Evo/1.5, Azure TTS, Amazon Polly
+
+- **🔢 Все модели с ELO рейтингом** — точные данные из Artificial Analysis
+- **💰 Актуальные цены** — для всех моделей с правильными единицами измерения
+- **📦 Оптимизация бандла** — bundle size 905KB (gzip 228KB)
+
+---
+
+#️⃣ [Unreleased] 📅 2025-12-21 🕤 00:30
+
+▶️ **Тема коммита:** `✨ Рейтинг ИИ: Плоский список по умолчанию, ELO сортировка, 30+ Code моделей`
+
+✅ Добавлено (21 декабря 2025)
+- **📋 Плоский список по умолчанию** — теперь модели отображаются без группировки
+  - Кнопка "📁 Группировка" включает/выключает группировку по семействам
+  - Кнопки развернуть/свернуть появляются только при включённой группировке
+  - Настройка сохраняется в localStorage
+
+- **🏆 Сортировка по ELO рейтингу по умолчанию** — самые популярные модели вверху
+  - Новая опция "🏆 Рейтинг (ELO)" в выпадающем списке сортировки
+  - ELO рейтинг отображается в панели деталей модели
+
+- **💻 30+ Code-моделей** — полный лидерборд по Artificial Analysis
+  - **TOP Tier:** Claude Sonnet 4.0 (ELO 1356), Claude 3.5 Sonnet (ELO 1318), Grok 3 (ELO 1262)
+  - **Google Gemini:** 2.5 Pro, 2.5 Flash, 1.5 Pro (1160-1250 ELO)
+  - **DeepSeek:** R1, V3 (1150-1200 ELO)
+  - **Qwen:** QwQ-32B, 2.5-72B, 2.5 Coder (1030-1150 ELO)
+  - **Meta Llama:** 4 Maverick, 4 Scout, 3.3/3.1/3-70B
+  - **Mistral:** Codestral 25.01, Large, Mixtral
+  - **Amazon Nova:** Pro, Lite
+
+---
+
 #️⃣ [Unreleased] 📅 2025-12-20 🕤 23:45
 
 ▶️ **Тема коммита:** `✨ Рейтинг ИИ: Избранное, группировка, детали моделей + Supabase фиксы`
 
 ✅ Добавлено (20 декабря 2025)
 - **📚 Каноническая база моделей (Master Registry)** — единый источник правды
-  - Новый файл `services/modelRating/canonicalModels.ts`
-  - ~100 канонических моделей с правильной классификацией
-  - Категории: text, image, video, audio, code, multimodal
-  - Модальности: text↔text, text→image, image→text, text→video, и т.д.
-  - Маппинг на ID у разных провайдеров (OpenRouter, Together, Groq, Replicate, Fal, etc.)
+  - Новый файл `services/modelRating/canonicalModels.ts` (~1700 строк)
+  - **210+ канонических моделей** с правильной классификацией по Artificial Analysis:
+    - **TEXT_MODELS** — ~50 LLM моделей (GPT, Claude, Gemini, Llama, DeepSeek, Qwen...)
+    - **IMAGE_MODELS** — 55 text-to-image моделей (Flux, Imagen, DALL-E, SD, Ideogram...)
+    - **VIDEO_MODELS** — 40 text-to-video моделей (Runway, Veo, Kling, Luma, Sora...)
+    - **AUDIO_MODELS** — 50 TTS моделей (Inworld, MiniMax, ElevenLabs, OpenAI, Fish...)
+    - **MUSIC_MODELS** — 11 text-to-music моделей (Suno, ElevenLabs, FUZZ, Lyria, Udio...)
+    - **CODE_MODELS** — 3 модели (CodeLlama, Codestral, Qwen Coder)
+    - **MULTIMODAL_MODELS** — 3 модели (LLaVA, Moondream, BLIP-2)
+  - Категории: text | image | video | audio | music | code | multimodal
+  - Модальности: text↔text, text→image, image→text, text→video, text→audio, и т.д.
+  - **Маппинг на ID провайдеров** — каждая модель знает свои ID у разных провайдеров
   - Vendor и Family для каждой модели (OpenAI/GPT, Anthropic/Claude, Google/Gemini, etc.)
-  - Автоматическое обогащение моделей данными из registry в aggregator
+  - **ELO рейтинги** из Artificial Analysis (где доступно)
+  - **Цены** с источниками (official/community/estimate)
+  - **Автоматическое обогащение** моделей в aggregator — провайдеры возвращают ID, aggregator обогащает данными
   - Функции: `findCanonicalByProviderId()`, `getProviderModelIds()`, `getModelProviders()`
+
+- **🖼️ Полный лидерборд Image моделей** — по данным Artificial Analysis
+  - 50+ image-моделей с правильной классификацией и ELO рейтингами
+  - **TOP Tier (1200+):** GPT Image 1.5, Nano Banana Pro (Gemini 3), FLUX.2 [max/pro]
+  - **Flux семейство:** FLUX.2 (max/pro/flex/dev), FLUX1.1, FLUX.1, Kontext
+  - **Google Imagen:** Imagen 4 Ultra/Preview/Fast, Gemini Flash Image
+  - **ByteDance Seedream:** v3.0, v4.0, v4.5
+  - **Ideogram:** v2, v2 Turbo, v3.0 (best text rendering)
+  - **Recraft:** v3, v3 SVG (illustrations & icons)
+  - **Stability AI:** SD 3.5 Large/Medium, SDXL
+  - **OpenAI:** DALL-E 3, DALL-E 3 HD, GPT Image 1
+  - **Tencent Hunyuan:** Image 2.1, 3.0
+  - **Alibaba:** Z-Image Turbo, Qwen-Image, Wan 2.5
+  - **Kuaishou Kolors:** v2.1
+  - **Luma Photon, HiDream Vivago, MiniMax Image-01**
+  - **Runway Gen-4 Image, Midjourney v6/v7**
+  - **NVIDIA Sana Sprint, DeepSeek Janus Pro, Bria FIBO**
+  - **ByteDance Infinity 8B** (cheapest: $1.7/1k)
+
+- **🎬 Полный лидерборд Video моделей** — по данным Artificial Analysis
+  - 40+ video-моделей text-to-video с ELO рейтингами
+  - **TOP Tier (1200+):** Runway Gen-4.5 (#1), Veo 3/3.1, Kling 2.5, Ray 3, Sora 2 Pro
+  - **Runway:** Gen-4.5 (ELO 1243), Gen-4
+  - **Google Veo:** Veo 3, Veo 3.1, Veo 3 Fast
+  - **Kuaishou Kling:** 2.5 Turbo, 2.1 Master, 2.0, 1.6 Pro, 1.5 Pro
+  - **Luma Labs:** Ray 3 (ELO 1212), Ray 2
+  - **OpenAI Sora:** Sora 2 Pro ($30/min), Sora 2, Sora
+  - **MiniMax Hailuo:** 02 Standard ($2.8/min), 2.3, 02 Pro
+  - **ByteDance:** Waver 1.0, Seedance 1.0/Mini
+  - **Alibaba Wan:** 2.5, 2.2 (14B/5B), 2.1
+  - **PixVerse, Vidu, Lightricks LTX, Pika, Leonardo Motion**
+  - **Tencent Hunyuan Video, Genmo Mochi, CogVideoX**
+  - Cheapest: Wan 2.2 5B ($1.8/min), Seedance Mini ($2.22/min)
+
+- **🎵 Полный лидерборд Audio/TTS моделей** — по данным Artificial Analysis
+  - 50+ TTS моделей text-to-speech с ELO рейтингами
+  - **TOP Tier (1100+):** Inworld TTS 1 Max (#1, ELO 1165), MiniMax Speech 2.6
+  - **ElevenLabs:** Multilingual v2, v3, Turbo v2.5, Flash v2.5
+  - **OpenAI:** TTS-1 (ELO 1110, $15/1M chars), TTS-1 HD, GPT-4o Mini TTS
+  - **MiniMax Speech:** 2.6 HD/Turbo, 02-HD/Turbo, T2A-01
+  - **Fish Audio:** OpenAudio S1 (ELO 1077), S1 Mini, Fish Speech 1.5
+  - **Amazon Polly:** Generative, Long-Form, Neural
+  - **Cartesia Sonic:** v3, English
+  - **Hume AI Octave, Microsoft Azure Neural, Google Studio/Journey/Chirp**
+  - **Open Source:** Kokoro 82M ($0.7/1M), Zonos, XTTS v2, StyleTTS 2, OpenVoice v2
+  - Cheapest: Kokoro 82M ($0.7/1M), StyleTTS 2 ($2.8/1M)
+
+- **🎶 Music Generation модели** — по данным Artificial Analysis
+  - **Suno V4.5** (#1, ELO 1109)
+  - **ElevenLabs Music** (ELO 1067)
+  - **Producer.ai FUZZ:** 1.1 Pro, 2.0 Raw, 2.0
+  - **Google Lyria 2** (ELO 1000)
+  - **Udio v1.5 Allegro**
+  - **Sonauto V2.1, Stable Audio 2.0, Meta MusicGen**
+
+- **💻 Code Generation модели (30+)** — по данным Artificial Analysis Text-to-Code Leaderboard
+  - **TOP Tier (1400+):** Claude Opus 4.5 Thinking (#1, ELO 1518), GPT-5.2 High (1485), Claude Opus 4.5 (1484), Gemini 3 Pro (1481)
+  - **High Tier (1300-1399):** GLM-4.6, DeepSeek V3.2 Thinking, GPT-5.1, Kimi K2 Thinking Turbo
+  - **GPT Codex серия:** GPT-5.1 Codex (ELO 1335), GPT-5.1 Codex Mini (1252)
+  - **Mid Tier (1250-1299):** Qwen3 Coder 480B, Claude Haiku 4.5, DeepSeek V3.2, KAT-Coder-Pro-V1
+  - **Good Tier (1200-1249):** Grok-4.1 Fast Reasoning, Mistral Large 3, Gemini 2.5 Pro, Grok-4.1 Thinking
+  - **Solid Tier (1100-1199):** Grok Code Fast 1, Devstral Medium 2507
+  - **Classic:** CodeLlama 70B, Codestral 22B, StarCoder2 15B
+  - Лицензии: MIT (DeepSeek, GLM), Apache 2.0 (Qwen, Mistral, MiniMax), Modified MIT (Kimi), Proprietary (Claude, GPT, Grok)
 
 - **⭐ Избранное** — система отметки моделей как избранных
   - Звёздочка на каждой модели в первой колонке таблицы

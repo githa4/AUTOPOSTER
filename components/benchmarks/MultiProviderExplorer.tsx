@@ -42,6 +42,7 @@ import {
 type ProviderTab = 'all' | string; // 'all' или ID провайдера
 
 type SortKey =
+  | 'elo'
   | 'name'
   | 'provider'
   | 'category'
@@ -55,6 +56,7 @@ type SortKey =
 type SortDir = 'asc' | 'desc';
 
 const DEFAULT_SORT_DIR: Record<SortKey, SortDir> = {
+  elo: 'desc',
   name: 'asc',
   provider: 'asc',
   category: 'asc',
@@ -71,6 +73,7 @@ const LS_API_KEYS = 'autopost_provider_api_keys';
 const LS_FAVORITE_MODELS = 'autopost_favorite_benchmark_models';
 const LS_COLLAPSED_FAMILIES = 'autopost_collapsed_model_families';
 const LS_DETAILS_WIDTH = 'autopost_multi_details_width_px';
+const LS_SHOW_GROUPS = 'autopost_show_model_groups';
 
 const FAMILY_OTHER = 'Другие';
 
@@ -555,8 +558,15 @@ export const MultiProviderExplorer: React.FC = () => {
   const [activeTab, setActiveTab] = useState<ProviderTab>('all');
   const [category, setCategory] = useState<ModelCategory>('all');
   const [search, setSearch] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('priceIn');
-  const [sortDir, setSortDir] = useState<SortDir>(DEFAULT_SORT_DIR.priceIn);
+  const [sortKey, setSortKey] = useState<SortKey>('elo');
+  const [sortDir, setSortDir] = useState<SortDir>(DEFAULT_SORT_DIR.elo);
+  const [showGroups, setShowGroups] = useState<boolean>(() => {
+    try {
+      const raw = localStorage.getItem(LS_SHOW_GROUPS);
+      return raw === 'true';
+    } catch {}
+    return false;
+  });
   const [onlyFree, setOnlyFree] = useState(false);
   const [onlyCheapest, setOnlyCheapest] = useState(false);
   const [onlyFavorites, setOnlyFavorites] = useState(false);
@@ -593,6 +603,13 @@ export const MultiProviderExplorer: React.FC = () => {
       localStorage.setItem(LS_DETAILS_WIDTH, String(detailsWidthPx));
     } catch {}
   }, [detailsWidthPx]);
+
+  // Сохранение режима группировки
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_SHOW_GROUPS, String(showGroups));
+    } catch {}
+  }, [showGroups]);
 
   // Resize handlers
   const startResize = (e: React.PointerEvent) => {
@@ -779,6 +796,8 @@ export const MultiProviderExplorer: React.FC = () => {
           return dir * (a.modality ?? '').localeCompare(b.modality ?? '');
         case 'created':
           return dir * ((a.createdAt ?? 0) - (b.createdAt ?? 0));
+        case 'elo':
+          return dir * ((a.elo ?? 0) - (b.elo ?? 0));
         default:
           return 0;
       }
@@ -1044,6 +1063,7 @@ export const MultiProviderExplorer: React.FC = () => {
               }}
               className="bg-[#252526] border border-[#3e3e42] rounded px-3 py-2 text-xs text-white outline-none focus:border-[#007acc]"
             >
+              <option value="elo">🏆 Рейтинг (ELO)</option>
               <option value="priceIn">Цена (вход)</option>
               <option value="priceOut">Цена (выход)</option>
               <option value="name">Название</option>
@@ -1055,22 +1075,38 @@ export const MultiProviderExplorer: React.FC = () => {
               <option value="created">Дата</option>
             </select>
 
-            {/* Кнопки свернуть/развернуть */}
+            {/* Кнопки группировки */}
             <div className="flex gap-1">
               <button
-                onClick={collapseAll}
-                className="p-2 bg-[#252526] hover:bg-[#333] border border-[#3e3e42] rounded text-[#ccc] transition-colors"
-                title="Свернуть все группы"
+                onClick={() => setShowGroups(v => !v)}
+                className={`p-2 border rounded transition-colors flex items-center gap-1 text-xs ${
+                  showGroups
+                    ? 'bg-blue-900/20 text-blue-200 border-blue-500/30'
+                    : 'bg-[#252526] text-[#ccc] border-[#3e3e42] hover:bg-[#333]'
+                }`}
+                title={showGroups ? 'Показывать плоский список' : 'Группировать по семействам'}
               >
-                <FolderClosed className="w-4 h-4" />
+                {showGroups ? <FolderOpen className="w-4 h-4" /> : <FolderClosed className="w-4 h-4" />}
+                <span className="hidden sm:inline">Группы</span>
               </button>
-              <button
-                onClick={expandAll}
-                className="p-2 bg-[#252526] hover:bg-[#333] border border-[#3e3e42] rounded text-[#ccc] transition-colors"
-                title="Развернуть все группы"
-              >
-                <FolderOpen className="w-4 h-4" />
-              </button>
+              {showGroups && (
+                <>
+                  <button
+                    onClick={collapseAll}
+                    className="p-2 bg-[#252526] hover:bg-[#333] border border-[#3e3e42] rounded text-[#ccc] transition-colors"
+                    title="Свернуть все группы"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={expandAll}
+                    className="p-2 bg-[#252526] hover:bg-[#333] border border-[#3e3e42] rounded text-[#ccc] transition-colors"
+                    title="Развернуть все группы"
+                  >
+                    <ChevronDown className="w-4 h-4" />
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1227,7 +1263,101 @@ export const MultiProviderExplorer: React.FC = () => {
                   Модели не найдены. Попробуйте изменить фильтры.
                 </td>
               </tr>
+            ) : !showGroups ? (
+              /* Плоский список без группировки */
+              displayModels.slice(0, displayLimit).map(model => {
+                const provider = getProviderById(model.providerId);
+                const isFav = favoriteIds.has(model.id);
+                
+                return (
+                  <tr
+                    key={model.id}
+                    className={`hover:bg-[#252526] transition-colors cursor-pointer ${
+                      selectedModel?.id === model.id ? 'bg-[#252526]' : ''
+                    } ${isFav ? 'bg-yellow-900/5' : ''}`}
+                    onClick={() => setSelectedModel(model)}
+                  >
+                    <td className="p-4 w-10">
+                      <button
+                        onClick={(e) => toggleFavorite(model.id, e)}
+                        className={`p-1 rounded transition-colors ${
+                          isFav
+                            ? 'text-yellow-400 hover:text-yellow-300'
+                            : 'text-[#555] hover:text-yellow-400'
+                        }`}
+                        title={isFav ? 'Убрать из избранного' : 'Добавить в избранное'}
+                      >
+                        <Star className={`w-4 h-4 ${isFav ? 'fill-yellow-400' : ''}`} />
+                      </button>
+                    </td>
+                    <td className="p-4">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-sm font-bold text-white">{model.name}</span>
+                        <span className="text-[10px] font-mono text-[#858585] break-all">
+                          {model.providerModelId}
+                        </span>
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          {model.isFree && <Badge label="Бесплатно" variant="success" />}
+                          {model.isNew && <Badge label="Новая" variant="default" />}
+                          {model.isCheapest && activeTab === 'all' && <CheapestBadge />}
+                        </div>
+                      </div>
+                    </td>
+                    {activeTab === 'all' && (
+                      <td className="p-4">
+                        {provider && <ProviderBadge provider={provider} small />}
+                      </td>
+                    )}
+                    <td className="p-4">
+                      <Badge label={model.category} />
+                    </td>
+                    <td className="p-4">
+                      <span className="text-xs font-mono text-[#ccc]">
+                        {formatContext(model.contextLength)}
+                      </span>
+                    </td>
+                    <td className="p-4">
+                      <span className="text-xs font-mono text-[#ccc]">
+                        {formatMaxOutput(model.maxOutputTokens)}
+                      </span>
+                    </td>
+                    <td className="p-4">
+                      <span className="text-[10px] font-mono text-[#888]">
+                        {formatModality(model.modality)}
+                      </span>
+                    </td>
+                    <td className="p-4">
+                      <span className="text-[10px] text-[#888]">
+                        {formatCreatedAt(model.createdAt)}
+                      </span>
+                    </td>
+                    <td className="p-4">
+                      <div className="text-[10px] text-[#ccc] font-mono">
+                        {model.pricing.inputPerM !== undefined && (
+                          <div>in: {formatPrice(model.pricing.inputPerM)}</div>
+                        )}
+                        {model.pricing.outputPerM !== undefined && (
+                          <div>out: {formatPrice(model.pricing.outputPerM)}</div>
+                        )}
+                        {model.pricing.imagePerUnit !== undefined && (
+                          <div>img: {formatImagePrice(model.pricing.imagePerUnit)}</div>
+                        )}
+                        {model.pricing.requestFixed !== undefined && (
+                          <div>{formatRequestPrice(model.pricing.requestFixed)}</div>
+                        )}
+                        {model.pricing.audioPerMinute !== undefined && (
+                          <div>{formatAudioPrice(model.pricing.audioPerMinute)}</div>
+                        )}
+                        {model.pricing.videoPerSecond !== undefined && (
+                          <div>{formatVideoPrice(model.pricing.videoPerSecond)}</div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
             ) : (
+              /* Группировка по семействам */
               groupedModels.map(([family, models]) => {
                 const isCollapsed = collapsedFamilies.has(family);
                 const visibleModels = models.slice(0, displayLimit);

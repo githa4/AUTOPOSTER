@@ -31,6 +31,7 @@ export interface UnifiedPricing {
   outputPerM?: number; // Цена за 1M выходных токенов
   imagePerUnit?: number; // Цена за 1 изображение
   audioPerMinute?: number; // Цена за минуту аудио
+  videoPerSecond?: number; // Цена за секунду видео
   requestFixed?: number; // Фиксированная цена за запрос
 }
 
@@ -51,6 +52,9 @@ export interface UnifiedModel {
   contextLength?: number;
   maxOutputTokens?: number;
   pricing: UnifiedPricing;
+  
+  // ELO рейтинг (из Artificial Analysis)
+  elo?: number;
   
   // Мета
   description?: string;
