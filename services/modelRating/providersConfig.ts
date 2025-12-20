@@ -89,7 +89,7 @@ export const PROVIDERS_CONFIG: ProviderConfig[] = [
     id: 'laozhang',
     name: 'LaoZhang.ai',
     type: 'unofficial',
-    enabled: false, // Отключен по умолчанию
+    enabled: true, // Доступен через тумблер в UI (по умолчанию не включаем)
     apiKeyRequired: true,
     apiKeyEnvName: 'LAOZHANG_API_KEY',
     siteUrl: 'https://api.laozhang.ai',
@@ -100,7 +100,7 @@ export const PROVIDERS_CONFIG: ProviderConfig[] = [
     id: 'api2d',
     name: 'API2D',
     type: 'unofficial',
-    enabled: false, // Отключен по умолчанию
+    enabled: true, // Доступен через тумблер в UI (по умолчанию не включаем)
     apiKeyRequired: true,
     apiKeyEnvName: 'API2D_API_KEY',
     siteUrl: 'https://api2d.com',

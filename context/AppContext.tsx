@@ -27,6 +27,7 @@ const LS_MODEL_KEY = 'autopost_model_config';
 const LS_API_WALLET_KEY = 'autopost_api_wallet'; 
 const LS_USER_CACHE = 'autopost_cached_user'; 
 const LS_FAV_MODELS = 'autopost_favorite_models';
+const LS_SUPABASE_MISSING_TABLES = 'autopost_supabase_missing_tables';
 
 // Dev rule: while UX is being built, keep UI in RU to avoid spending time
 // translating every new string. Set to null when EN is ready.
@@ -91,6 +92,17 @@ const safeSetItem = (key: string, value: any) => {
     }
 };
 
+const safeGetItem = <T,>(key: string, fallback: T): T => {
+    try {
+        const raw = localStorage.getItem(key);
+        return raw ? (JSON.parse(raw) as T) : fallback;
+    } catch {
+        return fallback;
+    }
+};
+
+const uniqStrings = (items: string[]) => Array.from(new Set(items.filter(Boolean)));
+
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(() => {
       try {
@@ -101,6 +113,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(false);
+
+  const [missingSupabaseTables, setMissingSupabaseTables] = useState<string[]>(() =>
+      uniqStrings(safeGetItem<string[]>(LS_SUPABASE_MISSING_TABLES, [])),
+  );
+
+  const markSupabaseTableMissing = (tableName: string) => {
+      setMissingSupabaseTables(prev => {
+          const next = uniqStrings([...prev, tableName]);
+          safeSetItem(LS_SUPABASE_MISSING_TABLES, next);
+          return next;
+      });
+  };
 
   const [telegramConfig, setTelegramConfig] = useState<TelegramConfig>(() => {
     try {
@@ -268,6 +292,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     const syncUserData = async () => {
         if (!user) { setIsSettingsLoaded(true); return; }
+
+        const isMissingSupabaseTable = (error: any, tableName: string) => {
+            const message = String(error?.message ?? '');
+            const hint = String(error?.hint ?? '');
+            return (
+                error?.code === 'PGRST205' ||
+                message.includes(`Could not find the table 'public.${tableName}'`) ||
+                hint.includes(`table 'public.${tableName}'`) ||
+                message.includes('schema cache')
+            );
+        };
+
         try {
             const { data: profileData } = await supabase.from('profiles').select('settings').eq('id', user.id).single();
             if (profileData?.settings) {
@@ -358,14 +394,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             }
 
             // --- Templates ---
-            const { data: dbTemplates, error: templatesError } = await supabase
-                .from('templates')
-                .select('id, name, config, created_at')
-                .eq('user_id', user.id)
-                .order('created_at', { ascending: false });
+            const shouldSkipTemplates = missingSupabaseTables.includes('templates');
+            const { data: dbTemplates, error: templatesError } = shouldSkipTemplates
+                ? ({ data: null, error: null } as any)
+                : await supabase
+                      .from('templates')
+                      .select('id, name, config, created_at')
+                      .eq('user_id', user.id)
+                      .order('created_at', { ascending: false });
 
             if (templatesError) {
-                console.error('Failed to load templates from Supabase', templatesError);
+                if (!isMissingSupabaseTable(templatesError, 'templates')) {
+                    console.error('Failed to load templates from Supabase', templatesError);
+                } else {
+                    markSupabaseTableMissing('templates');
+                }
             } else if (Array.isArray(dbTemplates)) {
                 if (dbTemplates.length > 0) {
                     setTemplates(
@@ -390,7 +433,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                         .insert(rowsToInsert);
 
                     if (insertError) {
-                        console.error('Failed to migrate local templates to Supabase', insertError);
+                        if (!isMissingSupabaseTable(insertError, 'templates')) {
+                            console.error('Failed to migrate local templates to Supabase', insertError);
+                        }
                     }
                 }
             }
@@ -398,7 +443,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             // --- Posts (history) ---
             const { data: dbPosts, error: postsError } = await supabase
                 .from('posts')
-                .select('id, project_id, topic, content, image_url, status, scheduled_at, created_at, stats, title')
+                .select('id, project_id, topic, content, image_url, status, scheduled_at, created_at, stats')
                 .eq('user_id', user.id)
                 .order('created_at', { ascending: false });
 
@@ -410,7 +455,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                         dbPosts.map((row: any) => ({
                             id: row.id,
                             folderId: row.project_id || undefined,
-                            title: row.title || undefined,
+                            title: undefined,
                             topic: row.topic || '',
                             content: row.content || '',
                             imageBase64: null,
@@ -435,7 +480,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                         scheduled_at: d.scheduledAt ? new Date(d.scheduledAt).toISOString() : null,
                         created_at: new Date(d.createdAt).toISOString(),
                         stats: d.stats ? { ...d.stats, postCount: d.postCount } : { postCount: d.postCount },
-                        title: d.title || null,
                     }));
 
                     const { error: insertError } = await supabase
@@ -546,7 +590,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             id: draft.id,
             user_id: user.id,
             project_id: draft.folderId || null,
-            title: draft.title || null,
             topic: draft.topic,
             content: draft.content,
                         // Never store base64 in DB
@@ -605,12 +648,34 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const saveTemplate = async (name: string, state: EditorState) => {
       const newTemplate: Template = { id: crypto.randomUUID(), name, createdAt: Date.now(), config: state };
       setTemplates(prev => [...prev, newTemplate]);
-      if (user) await supabase.from('templates').insert({ id: newTemplate.id, user_id: user.id, name: newTemplate.name, config: newTemplate.config, created_at: new Date(newTemplate.createdAt).toISOString() });
+      if (user) {
+          if (missingSupabaseTables.includes('templates')) return;
+          const { error } = await supabase.from('templates').insert({
+              id: newTemplate.id,
+              user_id: user.id,
+              name: newTemplate.name,
+              config: newTemplate.config,
+              created_at: new Date(newTemplate.createdAt).toISOString(),
+          });
+          if (error?.code !== 'PGRST205') {
+              console.error('Failed to save template to Supabase', error);
+          } else {
+              markSupabaseTableMissing('templates');
+          }
+      }
   };
 
   const deleteTemplate = async (id: string) => {
       setTemplates(prev => prev.filter(t => t.id !== id));
-      if (user) await supabase.from('templates').delete().eq('id', id);
+      if (user) {
+          if (missingSupabaseTables.includes('templates')) return;
+          const { error } = await supabase.from('templates').delete().eq('id', id);
+          if (error?.code !== 'PGRST205') {
+              console.error('Failed to delete template from Supabase', error);
+          } else {
+              markSupabaseTableMissing('templates');
+          }
+      }
   };
 
   const loadTemplate = (template: Template) => {

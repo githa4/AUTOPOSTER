@@ -834,8 +834,8 @@ export const SettingsPage: React.FC = () => {
             </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar" ref={scrollRef}>
-            <div className="max-w-5xl mx-auto flex flex-col gap-8 pb-20">
+        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar" ref={scrollRef}>
+            <div className="w-full flex flex-col gap-8 pb-20">
                 <div className="min-h-[200px]">
                     {(activeTab === 'gemini' || activeTab === 'openai' || activeTab === 'kie' || activeTab === 'openrouter' || activeTab === 'replicate') && (
                         <div className="bg-[#252526] p-6 rounded border border-[#3e3e42] animate-slide-up">
