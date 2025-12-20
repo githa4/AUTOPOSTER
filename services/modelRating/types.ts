@@ -41,6 +41,9 @@ export interface UnifiedModel {
   providerId: string; // ID провайдера (openrouter, together, etc.)
   providerModelId: string; // Оригинальный ID модели у провайдера
   
+  // Ссылка на каноническую модель
+  canonicalId?: string; // ID из canonicalModels.ts
+  
   // Категория
   category: ModelCategory;
   
@@ -57,6 +60,12 @@ export interface UnifiedModel {
   
   // Модальность
   modality?: string;
+  
+  // Вендор (разработчик модели)
+  vendor?: string;
+  
+  // Семейство модели
+  family?: string;
   
   // Доступность
   accessUrl?: string;

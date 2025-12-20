@@ -3,22 +3,21 @@
  * 
  * Содержит:
  * - ArtificialAnalysisRating: TOP моделей по Intelligence Index от AA
- * - MultiProviderExplorer: цены от 9+ провайдеров
- * - OpenRouterExplorer: детальный просмотр OpenRouter каталога
+ * - MultiProviderExplorer: цены от 9+ провайдеров, группировка, избранное
  */
 
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { BarChart2, Brain, Boxes, Server } from 'lucide-react';
+import { BarChart2, Brain, Boxes } from 'lucide-react';
 
-type BenchTab = 'aa' | 'providers' | 'openrouter';
+type BenchTab = 'aa' | 'providers';
 
 const LS_BENCH_TAB = 'autopost_benchmarks_active_tab';
 
 const safeLoadTab = (): BenchTab => {
     try {
         const raw = localStorage.getItem(LS_BENCH_TAB);
-        if (raw === 'aa' || raw === 'providers' || raw === 'openrouter') return raw;
+        if (raw === 'aa' || raw === 'providers') return raw;
     } catch {
         // ignore
     }
@@ -44,11 +43,6 @@ const LazyMultiProviderExplorer = React.lazy(async () => {
     return { default: mod.MultiProviderExplorer };
 });
 
-const LazyOpenRouterExplorer = React.lazy(async () => {
-    const mod = await import('./benchmarks/OpenRouterExplorer');
-    return { default: mod.OpenRouterExplorer };
-});
-
 export const BenchmarksPage: React.FC = () => {
     const { t } = useAppContext();
     const [activeTab, setActiveTab] = useState<BenchTab>(safeLoadTab);
@@ -63,8 +57,7 @@ export const BenchmarksPage: React.FC = () => {
 
     const contentTitle = useMemo(() => {
         if (activeTab === 'aa') return 'Artificial Analysis рейтинг';
-        if (activeTab === 'providers') return 'Цены у провайдеров';
-        return 'OpenRouter каталог';
+        return 'Цены у провайдеров';
     }, [activeTab]);
 
     const NavItem = ({
@@ -118,7 +111,6 @@ export const BenchmarksPage: React.FC = () => {
                     <div className="p-4 flex-1 overflow-y-auto custom-scrollbar">
                         <NavItem id="aa" icon={Brain} label="Artificial Analysis" colorClass="text-purple-400" />
                         <NavItem id="providers" icon={Boxes} label="Провайдеры" colorClass="text-blue-400" />
-                        <NavItem id="openrouter" icon={Server} label="OpenRouter" colorClass="text-sky-400" />
                     </div>
                 </div>
 
@@ -133,7 +125,6 @@ export const BenchmarksPage: React.FC = () => {
                         <Suspense fallback={<LoadingPanel label="Загружаю модуль…" />}>
                             {activeTab === 'aa' && <LazyArtificialAnalysisRating />}
                             {activeTab === 'providers' && <LazyMultiProviderExplorer />}
-                            {activeTab === 'openrouter' && <LazyOpenRouterExplorer />}
                         </Suspense>
                     </div>
                 </div>

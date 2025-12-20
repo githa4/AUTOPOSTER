@@ -20,6 +20,11 @@ import {
   fetchLaozhangModels,
   fetchApi2dModels,
 } from './providers';
+import { 
+  findCanonicalByProviderId, 
+  CANONICAL_MODELS,
+  CanonicalModel 
+} from './canonicalModels';
 
 export interface ApiKeys {
   together?: string;
@@ -46,6 +51,57 @@ const normalizeModelName = (name: string): string => {
     .replace(/[^a-z0-9]/g, '')
     .replace(/preview|latest|turbo/g, '')
     .trim();
+};
+
+/**
+ * Обогащает модель данными из канонической базы
+ * Использует каноническую категорию, модальность, vendor и family
+ */
+const enrichWithCanonical = (
+  model: UnifiedModel,
+  providerId: string
+): UnifiedModel => {
+  // Пытаемся найти по точному ID провайдера
+  const canonical = findCanonicalByProviderId(providerId, model.providerModelId);
+  
+  if (canonical) {
+    // Нашли в каноническом реестре — используем его данные
+    return {
+      ...model,
+      canonicalId: canonical.id,
+      category: mapCanonicalCategory(canonical.category),
+      modality: mapCanonicalModality(canonical.modality),
+      vendor: canonical.vendor,
+      family: canonical.family,
+      // Используем contextLength из канонической базы, если у провайдера нет
+      contextLength: model.contextLength ?? canonical.contextLength,
+      maxOutputTokens: model.maxOutputTokens ?? canonical.maxOutputTokens,
+    };
+  }
+  
+  return model;
+};
+
+/**
+ * Маппинг категории из канонической базы в ModelCategory
+ */
+const mapCanonicalCategory = (
+  category: 'text' | 'image' | 'video' | 'audio' | 'code' | 'multimodal'
+): import('./types').ModelCategory => {
+  switch (category) {
+    case 'code': return 'coding';
+    default: return category;
+  }
+};
+
+/**
+ * Маппинг модальности для отображения
+ */
+const mapCanonicalModality = (
+  modality: string
+): string => {
+  // Модальности уже в правильном формате
+  return modality;
 };
 
 // Загрузка моделей от конкретного провайдера
@@ -138,8 +194,11 @@ export const fetchAllProviderModels = async (
     if (!config) continue;
     
     for (const model of result.models) {
+      // Обогащаем модель данными из канонической базы
+      const enrichedModel = enrichWithCanonical(model, providerId);
+      
       allModels.push({
-        ...model,
+        ...enrichedModel,
         providerName: config.name,
         providerType: config.type,
       });

@@ -43,10 +43,28 @@ type ProviderTab = 'all' | string; // 'all' или ID провайдера
 
 type SortKey =
   | 'name'
+  | 'provider'
+  | 'category'
   | 'priceIn'
   | 'priceOut'
   | 'context'
+  | 'maxOutput'
+  | 'modality'
   | 'created';
+
+type SortDir = 'asc' | 'desc';
+
+const DEFAULT_SORT_DIR: Record<SortKey, SortDir> = {
+  name: 'asc',
+  provider: 'asc',
+  category: 'asc',
+  priceIn: 'asc',
+  priceOut: 'asc',
+  context: 'desc',
+  maxOutput: 'desc',
+  modality: 'asc',
+  created: 'desc',
+};
 
 const LS_ENABLED_PROVIDERS = 'autopost_enabled_providers';
 const LS_API_KEYS = 'autopost_provider_api_keys';
@@ -517,8 +535,8 @@ export const MultiProviderExplorer: React.FC = () => {
       const raw = localStorage.getItem(LS_ENABLED_PROVIDERS);
       if (raw) return JSON.parse(raw);
     } catch {}
-    // По умолчанию только официальные
-    return PROVIDERS_CONFIG.filter(p => p.type === 'official' && p.enabled).map(p => p.id);
+    // По умолчанию только провайдеры без обязательного API ключа (OpenRouter)
+    return PROVIDERS_CONFIG.filter(p => p.type === 'official' && p.enabled && !p.apiKeyRequired).map(p => p.id);
   });
 
   const [apiKeys, setApiKeys] = useState<ApiKeys>(() => {
@@ -538,12 +556,23 @@ export const MultiProviderExplorer: React.FC = () => {
   const [category, setCategory] = useState<ModelCategory>('all');
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('priceIn');
+  const [sortDir, setSortDir] = useState<SortDir>(DEFAULT_SORT_DIR.priceIn);
   const [onlyFree, setOnlyFree] = useState(false);
   const [onlyCheapest, setOnlyCheapest] = useState(false);
   const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [sortFavoritesTop, setSortFavoritesTop] = useState(true); // Сортировать избранные вверху
   const [selectedModel, setSelectedModel] = useState<AggregatedModel | null>(null);
   const [displayLimit, setDisplayLimit] = useState(20);
+
+  const handleSortChange = (key: SortKey) => {
+    if (key === sortKey) {
+      setSortDir(prev => (prev === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+
+    setSortKey(key);
+    setSortDir(DEFAULT_SORT_DIR[key]);
+  };
 
   // Ширина панели деталей
   const [detailsWidthPx, setDetailsWidthPx] = useState<number>(() => {
@@ -729,18 +758,27 @@ export const MultiProviderExplorer: React.FC = () => {
     }
 
     // Сортировка
+    const dir = sortDir === 'asc' ? 1 : -1;
     const cmp = (a: AggregatedModel, b: AggregatedModel) => {
       switch (sortKey) {
         case 'name':
-          return a.name.localeCompare(b.name);
+          return dir * a.name.localeCompare(b.name);
+        case 'provider':
+          return dir * a.providerName.localeCompare(b.providerName);
+        case 'category':
+          return dir * a.category.localeCompare(b.category);
         case 'priceIn':
-          return (a.pricing.inputPerM ?? Infinity) - (b.pricing.inputPerM ?? Infinity);
+          return dir * ((a.pricing.inputPerM ?? Infinity) - (b.pricing.inputPerM ?? Infinity));
         case 'priceOut':
-          return (a.pricing.outputPerM ?? Infinity) - (b.pricing.outputPerM ?? Infinity);
+          return dir * ((a.pricing.outputPerM ?? Infinity) - (b.pricing.outputPerM ?? Infinity));
         case 'context':
-          return (b.contextLength ?? 0) - (a.contextLength ?? 0);
+          return dir * ((a.contextLength ?? 0) - (b.contextLength ?? 0));
+        case 'maxOutput':
+          return dir * ((a.maxOutputTokens ?? 0) - (b.maxOutputTokens ?? 0));
+        case 'modality':
+          return dir * (a.modality ?? '').localeCompare(b.modality ?? '');
         case 'created':
-          return (b.createdAt ?? 0) - (a.createdAt ?? 0);
+          return dir * ((a.createdAt ?? 0) - (b.createdAt ?? 0));
         default:
           return 0;
       }
@@ -757,7 +795,7 @@ export const MultiProviderExplorer: React.FC = () => {
     }
     
     return sorted;
-  }, [result, activeTab, category, search, onlyFree, onlyCheapest, onlyFavorites, favoriteIds, sortKey, sortFavoritesTop]);
+  }, [result, activeTab, category, search, onlyFree, onlyCheapest, onlyFavorites, favoriteIds, sortKey, sortDir, sortFavoritesTop]);
 
   // Группировка по семействам
   const groupedModels = useMemo(() => {
@@ -999,13 +1037,21 @@ export const MultiProviderExplorer: React.FC = () => {
 
             <select
               value={sortKey}
-              onChange={e => setSortKey(e.target.value as SortKey)}
+              onChange={e => {
+                const nextKey = e.target.value as SortKey;
+                setSortKey(nextKey);
+                setSortDir(DEFAULT_SORT_DIR[nextKey]);
+              }}
               className="bg-[#252526] border border-[#3e3e42] rounded px-3 py-2 text-xs text-white outline-none focus:border-[#007acc]"
             >
               <option value="priceIn">Цена (вход)</option>
               <option value="priceOut">Цена (выход)</option>
               <option value="name">Название</option>
+              <option value="provider">Провайдер</option>
+              <option value="category">Тип</option>
               <option value="context">Контекст</option>
+              <option value="maxOutput">Выход</option>
+              <option value="modality">Модальность</option>
               <option value="created">Дата</option>
             </select>
 
@@ -1055,16 +1101,112 @@ export const MultiProviderExplorer: React.FC = () => {
           <thead className="bg-[#252526] text-[10px] font-bold text-[#858585] uppercase tracking-wider sticky top-0 z-10">
             <tr>
               <th className="p-4 border-b border-[#3e3e42] w-10"></th>
-              <th className="p-4 border-b border-[#3e3e42]">Модель</th>
+              <th className="p-4 border-b border-[#3e3e42]">
+                <button
+                  type="button"
+                  onClick={() => handleSortChange('name')}
+                  className="w-full flex items-center gap-1 text-left cursor-pointer hover:text-[#ccc] hover:underline transition-colors"
+                  title="Сортировать по названию"
+                >
+                  Модель
+                  <span className={`text-[10px] ${sortKey === 'name' ? 'text-[#007acc]' : 'text-[#555]'}`}>
+                    {sortKey === 'name' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+                  </span>
+                </button>
+              </th>
               {activeTab === 'all' && (
-                <th className="p-4 border-b border-[#3e3e42] w-32">Провайдер</th>
+                <th className="p-4 border-b border-[#3e3e42] w-32">
+                  <button
+                    type="button"
+                    onClick={() => handleSortChange('provider')}
+                    className="w-full flex items-center gap-1 text-left cursor-pointer hover:text-[#ccc] hover:underline transition-colors"
+                    title="Сортировать по провайдеру"
+                  >
+                    Провайдер
+                    <span className={`text-[10px] ${sortKey === 'provider' ? 'text-[#007acc]' : 'text-[#555]'}`}>
+                      {sortKey === 'provider' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+                    </span>
+                  </button>
+                </th>
               )}
-              <th className="p-4 border-b border-[#3e3e42] w-24">Тип</th>
-              <th className="p-4 border-b border-[#3e3e42] w-24">Контекст</th>
-              <th className="p-4 border-b border-[#3e3e42] w-20">Выход</th>
-              <th className="p-4 border-b border-[#3e3e42] w-24">Модальн.</th>
-              <th className="p-4 border-b border-[#3e3e42] w-24">Добавлена</th>
-              <th className="p-4 border-b border-[#3e3e42] w-40">Цена</th>
+              <th className="p-4 border-b border-[#3e3e42] w-24">
+                <button
+                  type="button"
+                  onClick={() => handleSortChange('category')}
+                  className="w-full flex items-center gap-1 text-left cursor-pointer hover:text-[#ccc] hover:underline transition-colors"
+                  title="Сортировать по типу"
+                >
+                  Тип
+                  <span className={`text-[10px] ${sortKey === 'category' ? 'text-[#007acc]' : 'text-[#555]'}`}>
+                    {sortKey === 'category' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+                  </span>
+                </button>
+              </th>
+              <th className="p-4 border-b border-[#3e3e42] w-24">
+                <button
+                  type="button"
+                  onClick={() => handleSortChange('context')}
+                  className="w-full flex items-center gap-1 text-left cursor-pointer hover:text-[#ccc] hover:underline transition-colors"
+                  title="Сортировать по контексту"
+                >
+                  Контекст
+                  <span className={`text-[10px] ${sortKey === 'context' ? 'text-[#007acc]' : 'text-[#555]'}`}>
+                    {sortKey === 'context' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+                  </span>
+                </button>
+              </th>
+              <th className="p-4 border-b border-[#3e3e42] w-20">
+                <button
+                  type="button"
+                  onClick={() => handleSortChange('maxOutput')}
+                  className="w-full flex items-center gap-1 text-left cursor-pointer hover:text-[#ccc] hover:underline transition-colors"
+                  title="Сортировать по максимальному выходу"
+                >
+                  Выход
+                  <span className={`text-[10px] ${sortKey === 'maxOutput' ? 'text-[#007acc]' : 'text-[#555]'}`}>
+                    {sortKey === 'maxOutput' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+                  </span>
+                </button>
+              </th>
+              <th className="p-4 border-b border-[#3e3e42] w-24">
+                <button
+                  type="button"
+                  onClick={() => handleSortChange('modality')}
+                  className="w-full flex items-center gap-1 text-left cursor-pointer hover:text-[#ccc] hover:underline transition-colors"
+                  title="Сортировать по модальности"
+                >
+                  Модальн.
+                  <span className={`text-[10px] ${sortKey === 'modality' ? 'text-[#007acc]' : 'text-[#555]'}`}>
+                    {sortKey === 'modality' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+                  </span>
+                </button>
+              </th>
+              <th className="p-4 border-b border-[#3e3e42] w-24">
+                <button
+                  type="button"
+                  onClick={() => handleSortChange('created')}
+                  className="w-full flex items-center gap-1 text-left cursor-pointer hover:text-[#ccc] hover:underline transition-colors"
+                  title="Сортировать по дате добавления"
+                >
+                  Добавлена
+                  <span className={`text-[10px] ${sortKey === 'created' ? 'text-[#007acc]' : 'text-[#555]'}`}>
+                    {sortKey === 'created' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+                  </span>
+                </button>
+              </th>
+              <th className="p-4 border-b border-[#3e3e42] w-40">
+                <button
+                  type="button"
+                  onClick={() => handleSortChange('priceIn')}
+                  className="w-full flex items-center gap-1 text-left cursor-pointer hover:text-[#ccc] hover:underline transition-colors"
+                  title="Сортировать по цене (вход)"
+                >
+                  Цена
+                  <span className={`text-[10px] ${sortKey === 'priceIn' ? 'text-[#007acc]' : 'text-[#555]'}`}>
+                    {sortKey === 'priceIn' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+                  </span>
+                </button>
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#2a2d2e]">
