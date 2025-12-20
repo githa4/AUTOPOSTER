@@ -4,9 +4,12 @@
  * 
  * ВСЕ модели из Artificial Analysis LEADERBOARD (декабрь 2025)
  * Включает LLM, Image, Video, Music, TTS — 70+ моделей
+ * 
+ * Модели с пометкой inLeaderboard: true находятся в топе рейтинга AA
  */
 
 import { UnifiedModel, ProviderModelsResult } from '../types';
+import { findInLeaderboard } from '../leaderboardData';
 
 // ВСЕ модели из LEADERBOARD доступные на Replicate
 const CURATED_MODELS: UnifiedModel[] = [
@@ -80,10 +83,35 @@ const CURATED_MODELS: UnifiedModel[] = [
   { id: 'replicate:kokoro-tts', name: 'Kokoro TTS', providerId: 'replicate', providerModelId: 'kokoro-tts/kokoro', category: 'tts', elo: 850, pricing: { perMinute: 0.003 } },
 ];
 
+/**
+ * Обогащает модели данными из лидерборда Artificial Analysis
+ * Добавляет флаг inLeaderboard и актуальный ELO
+ */
+const enrichWithLeaderboardData = (models: UnifiedModel[]): UnifiedModel[] => {
+  return models.map(model => {
+    const leaderboardEntry = findInLeaderboard(model.name);
+    if (leaderboardEntry) {
+      return {
+        ...model,
+        elo: leaderboardEntry.elo, // Актуальный ELO из лидерборда
+        inLeaderboard: true,
+        description: `🏆 В рейтинге AA (ELO: ${leaderboardEntry.elo})${model.description ? ' — ' + model.description : ''}`,
+      };
+    }
+    return {
+      ...model,
+      inLeaderboard: false,
+    };
+  });
+};
+
 export const fetchReplicateModels = async (_apiKey?: string): Promise<ProviderModelsResult> => {
+  // Обогащаем модели данными из лидерборда
+  const enrichedModels = enrichWithLeaderboardData(CURATED_MODELS);
+  
   return {
     providerId: 'replicate',
-    models: CURATED_MODELS,
+    models: enrichedModels,
     lastUpdated: Date.now(),
   };
 };

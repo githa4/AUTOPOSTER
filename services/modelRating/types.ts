@@ -62,6 +62,9 @@ export interface UnifiedModel {
   isFree?: boolean;
   isNew?: boolean;
   
+  // Флаг: модель в топ-рейтинге Artificial Analysis
+  inLeaderboard?: boolean;
+  
   // Модальность
   modality?: string;
   

@@ -2,6 +2,90 @@
 
 ---
 
+#️⃣ [Unreleased] 📅 2025-12-21 🕤 03:45
+
+▶️ **Тема коммита:** `🎯 Replicate: Интеграция с LEADERBOARD, 70+ моделей с актуальным ELO`
+
+✅ Добавлено (21 декабря 2025)
+- **📊 LEADERBOARD_2025_12.md → Replicate** — создан файл `leaderboardData.ts` с полной базой моделей
+  - 📝 LLM/Text: 33 модели
+  - 🖼️ Vision/Multimodal: 20 моделей
+  - 💻 Code: 31 модель
+  - 🎨 Image: 29 моделей
+  - 🎬 Video: 32 модели
+  - 🎵 Music: 15 моделей
+  - 🎙️ TTS: 19 моделей
+  - 🔍 Функция `findInLeaderboard()` — нечёткий поиск моделей
+
+- **🏆 Бейдж "🏆 AA" для топ-моделей** — визуальная индикация моделей из рейтинга Artificial Analysis
+  - Добавлено поле `inLeaderboard: boolean` в типы
+  - `ModelsTableCore.tsx` показывает бейдж рядом с названием
+  - Автообогащение ELO рейтингом из лидерборда
+
+- **🔧 Replicate провайдер (70+ моделей):**
+  - `replicateProvider.ts` → `fetchReplicateModels()` — загружает модели из лидерборда
+  - `enrichWithLeaderboardData()` — добавляет актуальные ELO и флаг `inLeaderboard`
+  - Без API ключа: 70+ моделей из лидерборда (без 401 ошибок)
+  - С API ключом: лидерборд + дополнительные модели из Replicate API
+
+- **📦 Унификация системы моделей:**
+  - `modelRegistryService.ts` → `convertUnifiedToModel()` — конвертер UnifiedModel → Model
+  - `getReplicateFallbackModels()` — асинхронная загрузка с кэшированием
+  - Добавлены поля `modality` и `category` в тип `Model`
+  - Мапинг категорий: `image` → `text->image`, `video` → `text->video`, etc.
+
+🔨 Исправлено (21 декабря 2025)
+- **🐛 Дубликаты React keys** — модели с одинаковым `providerModelId` но разными категориями
+  - DeepSeek V3.2 Thinking (Text) vs DeepSeek V3.2 Thinking (Code)
+  - Решение: `raw.uniqueId` для React keys, `providerModelId` для API
+- **🐛 Неверная классификация** — все модели показывались как "text↔text"
+  - Исправлено: передача `category` и `modality` через всю цепочку конвертации
+- **❌ 401 Unauthorized без ключа** — запросы к API без авторизации
+  - Оптимизация: если нет API ключа → сразу возвращаем модели из лидерборда
+- **💥 ReferenceError: REPLICATE_FALLBACK_MODELS** — старое имя константы
+  - Переименовано в `REPLICATE_FALLBACK_MODELS_SYNC`
+
+📝 Техническая документация (21 декабря 2025)
+- **Структура данных:**
+  ```typescript
+  // services/modelRating/leaderboardData.ts
+  export const LLM_LEADERBOARD: LeaderboardModel[]
+  export const IMAGE_LEADERBOARD: LeaderboardModel[]
+  export const VIDEO_LEADERBOARD: LeaderboardModel[]
+  export const MUSIC_LEADERBOARD: LeaderboardModel[]
+  export const TTS_LEADERBOARD: LeaderboardModel[]
+  export function findInLeaderboard(modelName: string): LeaderboardModel | undefined
+  ```
+
+- **Типы:**
+  ```typescript
+  interface Model {
+    id: string; // для API (owner/name)
+    modality?: string; // text->image, text->video, etc.
+    category?: string; // text, image, video, audio, coding
+    raw?: { uniqueId: string; category: string } // для React keys
+  }
+  
+  interface UnifiedModel {
+    inLeaderboard?: boolean; // флаг топ-модели
+  }
+  ```
+
+- **Конвертация:**
+  - UnifiedModel (провайдеры) → Model (основной тип) → AggregatedModel (таблица)
+  - `id = providerModelId` — для API Replicate (owner/name формат)
+  - `raw.uniqueId = unified.id` — для уникальных React keys
+
+🎯 Результаты (21 декабря 2025)
+- ✅ **70+ моделей Replicate** из топ-рейтинга AA
+- ✅ Правильная **классификация** (text, image, video, audio, tts)
+- ✅ **Нет 401 ошибок** при отсутствии API ключа
+- ✅ **Нет дубликатов** React keys
+- ✅ Визуальная индикация **🏆 AA** для топ-моделей
+- ✅ Актуальные **ELO рейтинги** из лидерборда
+
+---
+
 #️⃣ [Unreleased] 📅 2025-12-21 🕤 01:15
 
 ▶️ **Тема коммита:** `✨ Рейтинг ИИ: Добавлены ВСЕ 117 моделей из Artificial Analysis LEADERBOARD`

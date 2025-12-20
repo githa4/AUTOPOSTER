@@ -13,7 +13,7 @@ import { testImageGeneration } from '../services/replicateService';
 import { fetchModelsForProvider, getCacheStatus, clearModelCache, getStaticModels, getLatestModels } from '../services/modelRegistryService';
 import { ApiProvider, Model, ImageProvider, IntegrationProvider, Integration, ApiKeyEntry } from '../types';
 import { supabase } from '../lib/supabaseClient'; 
-import { ModelManagerModal } from './ModelManager'; 
+import { ModelsTableCore } from './ModelsTableCore';
 // Add missing Cpu and HardDrive imports
 import { 
     Save, Server, RefreshCw, MessageSquare, 
@@ -339,7 +339,6 @@ const ModelAssignmentRow = ({
     getKeys,
     onOpenWallet,
     onSyncModels,
-    onOpenManager,
     onAddCustomModel,
 }: any) => {
     const { favoriteModelIds, t } = useAppContext();
@@ -410,7 +409,7 @@ const ModelAssignmentRow = ({
                         )}
                     </div>
                     <div>
-                        <label className="text-[10px] text-[#666] font-bold uppercase mb-1.5 block flex justify-between"><span>{t('lblModel')}</span><span onClick={onOpenManager} className="text-[9px] text-[#007acc] hover:underline cursor-pointer flex items-center gap-1"><Settings className="w-3 h-3" /> {t('refresh').split(' ')[0]}</span></label>
+                        <label className="text-[10px] text-[#666] font-bold uppercase mb-1.5 block">{t('lblModel')}</label>
                         <div className="flex gap-2"><div className="flex-1"><SearchableSelect value={model} onChange={setModel} options={sortedOptions} placeholder={t('selectModel')} favorites={favoriteModelIds} /></div></div>
                         {sortedOptions.length === 0 && (
                             <div className="mt-2 rounded border border-[#333] bg-[#1e1e1e] px-3 py-2 text-[10px] text-[#aaa]">
@@ -579,7 +578,6 @@ export const SettingsPage: React.FC = () => {
   const [newIntCreds, setNewIntCreds] = useState<any>({});
   
   const [showCloudInspector, setShowCloudInspector] = useState(false);
-  const [showModelManager, setShowModelManager] = useState(false);
 
   const runKeyTest = async (provider: ApiProvider, key: string) => {
       if (!key) {
@@ -871,116 +869,55 @@ export const SettingsPage: React.FC = () => {
                             />
                             {fetchStatus && fetchStatus.provider === activeTab && <ApiConnectionStatus status={fetchStatus} />}
                             
-                            {/* Models List Section */}
+                            {/* Models Table with Quick Assign */}
                             {(() => {
                                 const providerModels = availableModels.filter(m => m.provider === activeTab);
-                                const providerModelsSorted = [...availableModels]
-                                    .filter(m => m.provider === activeTab)
-                                    .sort((a, b) => ((b.created || 0) - (a.created || 0)));
-
-                                const latest10 = providerModelsSorted.slice(0, 10);
-                                const restModels = providerModelsSorted.slice(10);
                                 const cacheInfo = getCacheStatus(activeTab as ApiProvider);
-                                if (providerModelsSorted.length === 0 && !cacheInfo.isCached) return null;
+                                if (providerModels.length === 0 && !cacheInfo.isCached) return null;
                                 
                                 return (
-                                    <div className="mt-6 bg-[#1e1e1e] rounded border border-[#3e3e42]">
-                                        <div className="flex items-center justify-between px-4 py-3 border-b border-[#3e3e42]">
-                                            <div className="flex items-center gap-2">
-                                                <LayoutGrid className="w-4 h-4 text-[#666]" />
-                                                <span className="text-xs font-bold text-[#999] uppercase">
-                                                    Доступные модели ({providerModelsSorted.length})
-                                                </span>
-                                                {cacheInfo.isCached && (
-                                                    <span className="text-[9px] bg-[#333] text-[#888] px-1.5 py-0.5 rounded">
-                                                        из кэша
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
-                                            {providerModelsSorted.length === 0 ? (
-                                                <div className="p-4 text-center text-xs text-[#666]">
-                                                    Нажмите "Refresh" чтобы загрузить модели
-                                                </div>
-                                            ) : (
-                                                <div className="divide-y divide-[#2a2a2a]">
-                                                    {/* Latest 10 */}
-                                                    {latest10.map(m => (
-                                                        <div key={m.id} className="px-4 py-2.5 hover:bg-[#252526] transition-colors group">
-                                                            <div className="flex items-start justify-between gap-3">
-                                                                <div className="flex-1 min-w-0">
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className="text-xs font-medium text-white truncate">{m.name}</span>
-                                                                        {m.isFree && (
-                                                                            <span className="text-[8px] bg-green-900/30 text-green-400 px-1 rounded uppercase font-bold">free</span>
-                                                                        )}
-                                                                    </div>
-                                                                    <div className="text-[10px] text-[#666] font-mono truncate mt-0.5">{m.id}</div>
-                                                                </div>
-                                                                <div className="flex items-center gap-3 text-[10px] text-[#555] shrink-0">
-                                                                    {m.contextLength && m.contextLength > 0 && (
-                                                                        <span className="flex items-center gap-1">
-                                                                            <Cpu className="w-3 h-3" />
-                                                                            {Math.round(m.contextLength / 1000)}K
-                                                                        </span>
-                                                                    )}
-                                                                    {m.pricing?.prompt && (
-                                                                        <span className="flex items-center gap-1">
-                                                                            <Coins className="w-3 h-3 text-yellow-600" />
-                                                                            {m.pricing.prompt}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                            {m.description && (
-                                                                <p className="text-[10px] text-[#555] mt-1 line-clamp-1 group-hover:text-[#888] transition-colors">{m.description}</p>
-                                                            )}
-                                                        </div>
-                                                    ))}
-
-                                                    {/* Rest */}
-                                                    {restModels.slice(0, 40).map(m => (
-                                                        <div key={m.id} className="px-4 py-2.5 hover:bg-[#252526] transition-colors group">
-                                                            <div className="flex items-start justify-between gap-3">
-                                                                <div className="flex-1 min-w-0">
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className="text-xs font-medium text-white truncate">{m.name}</span>
-                                                                        {m.isFree && (
-                                                                            <span className="text-[8px] bg-green-900/30 text-green-400 px-1 rounded uppercase font-bold">free</span>
-                                                                        )}
-                                                                    </div>
-                                                                    <div className="text-[10px] text-[#666] font-mono truncate mt-0.5">{m.id}</div>
-                                                                </div>
-                                                                <div className="flex items-center gap-3 text-[10px] text-[#555] shrink-0">
-                                                                    {m.contextLength && m.contextLength > 0 && (
-                                                                        <span className="flex items-center gap-1">
-                                                                            <Cpu className="w-3 h-3" />
-                                                                            {Math.round(m.contextLength / 1000)}K
-                                                                        </span>
-                                                                    )}
-                                                                    {m.pricing?.prompt && (
-                                                                        <span className="flex items-center gap-1">
-                                                                            <Coins className="w-3 h-3 text-yellow-600" />
-                                                                            {m.pricing.prompt}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                            {m.description && (
-                                                                <p className="text-[10px] text-[#555] mt-1 line-clamp-1 group-hover:text-[#888] transition-colors">{m.description}</p>
-                                                            )}
-                                                        </div>
-                                                    ))}
-
-                                                    {providerModelsSorted.length > 50 && (
-                                                        <div className="px-4 py-2 text-center text-[10px] text-[#666]">
-                                                            ... и ещё {providerModelsSorted.length - 50} моделей
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
+                                    <div className="mt-6">
+                                        <ModelsTableCore
+                                            models={providerModels}
+                                            mode="inline"
+                                            showProviderColumn={false}
+                                            showAssignButtons={true}
+                                            showDetailsPanel={true}
+                                            showGrouping={false}
+                                            maxHeight="400px"
+                                            displayLimit={20}
+                                            showLoadMore={true}
+                                            currentAssignments={{
+                                                textModel,
+                                                youtubeModel,
+                                                imageModel,
+                                            }}
+                                            onAssign={(modelId, type, provider) => {
+                                                // Toggle логика: если уже назначено — снимаем
+                                                if (type === 'text') {
+                                                    if (textModel === modelId) {
+                                                        setTextModel('');
+                                                    } else {
+                                                        setTextModel(modelId);
+                                                        setTextProvider(provider);
+                                                    }
+                                                } else if (type === 'youtube') {
+                                                    if (youtubeModel === modelId) {
+                                                        setYoutubeModel('');
+                                                    } else {
+                                                        setYoutubeModel(modelId);
+                                                        setYoutubeProvider(provider);
+                                                    }
+                                                } else if (type === 'image') {
+                                                    if (imageModel === modelId) {
+                                                        setImageModel('');
+                                                    } else {
+                                                        setImageModel(modelId);
+                                                        setImageProvider(provider as ImageProvider);
+                                                    }
+                                                }
+                                            }}
+                                        />
                                     </div>
                                 );
                             })()}
@@ -1205,7 +1142,6 @@ export const SettingsPage: React.FC = () => {
                             })}
                             onOpenWallet={(p: ApiProvider) => openWalletForProvider(p)}
                             onSyncModels={(p: ApiProvider) => handleFetchModels(p, getDefaultKeyForProvider(p))}
-                            onOpenManager={() => setShowModelManager(true)}
                         />
                         <ModelAssignmentRow
                             title={t('assignYoutube')}
@@ -1230,7 +1166,6 @@ export const SettingsPage: React.FC = () => {
                             })}
                             onOpenWallet={(p: ApiProvider) => openWalletForProvider(p)}
                             onSyncModels={(p: ApiProvider) => handleFetchModels(p, getDefaultKeyForProvider(p))}
-                            onOpenManager={() => setShowModelManager(true)}
                         />
                         <ModelAssignmentRow
                             title={t('assignImage')}
@@ -1256,7 +1191,6 @@ export const SettingsPage: React.FC = () => {
                             onOpenWallet={(p: ApiProvider) => openWalletForProvider(p)}
                             onSyncModels={(p: ApiProvider) => handleFetchModels(p, getDefaultKeyForProvider(p))}
                             onAddCustomModel={handleAddCustomModel}
-                            onOpenManager={() => setShowModelManager(true)}
                         />
                     </div>
                 </div>
@@ -1264,7 +1198,6 @@ export const SettingsPage: React.FC = () => {
             </div>
         </div>
         <CloudInspectorModal isOpen={showCloudInspector} onClose={() => setShowCloudInspector(false)} userId={user?.id} />
-        <ModelManagerModal isOpen={showModelManager} onClose={() => setShowModelManager(false)} />
       </div>
     </div>
   );

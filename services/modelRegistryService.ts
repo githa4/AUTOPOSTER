@@ -10,6 +10,7 @@
 
 import { Model, ApiProvider } from '../types';
 import { getSpecsForModel, GEMINI_TEXT_MODELS, KIE_DEFAULT_MODELS } from './geminiService';
+import { fetchReplicateModels as fetchReplicateFromProvider } from './modelRating/providers/replicateProvider';
 
 // === CONSTANTS ===
 const CACHE_KEY_PREFIX = 'autopost_models_cache_';
@@ -41,18 +42,77 @@ const normalizeAndSortNewestFirst = (models: Model[]): Model[] => {
         .sort((a, b) => (b.created || 0) - (a.created || 0));
 };
 
-// === STATIC FALLBACK MODELS ===
-const REPLICATE_FALLBACK_MODELS: Model[] = [
-    { id: 'black-forest-labs/flux-schnell', name: 'FLUX.1 Schnell', provider: 'replicate', description: 'Fastest state-of-the-art open model. 4 steps.', isFree: false, contextLength: 0, pricing: { prompt: '$0.003/image', completion: '' } },
-    { id: 'black-forest-labs/flux-dev', name: 'FLUX.1 Dev', provider: 'replicate', description: 'Professional grade, high detail. 25 steps.', isFree: false, contextLength: 0, pricing: { prompt: '$0.025/image', completion: '' } },
-    { id: 'black-forest-labs/flux-1.1-pro', name: 'FLUX 1.1 Pro', provider: 'replicate', description: 'State-of-the-art image generation with top quality.', isFree: false, contextLength: 0, pricing: { prompt: '$0.04/image', completion: '' } },
-    { id: 'stability-ai/sdxl', name: 'Stable Diffusion XL', provider: 'replicate', description: 'Classic reliable high-res generation.', isFree: false, contextLength: 0, pricing: { prompt: '$0.002/image', completion: '' } },
-    { id: 'stability-ai/stable-diffusion-3', name: 'Stable Diffusion 3', provider: 'replicate', description: 'Next-gen SD with improved quality.', isFree: false, contextLength: 0, pricing: { prompt: '$0.035/image', completion: '' } },
-    { id: 'recraft-ai/recraft-v3', name: 'Recraft V3', provider: 'replicate', description: 'Best for Vector Art and Illustrations.', isFree: false, contextLength: 0, pricing: { prompt: '$0.04/image', completion: '' } },
-    { id: 'ideogram-ai/ideogram-v2', name: 'Ideogram V2', provider: 'replicate', description: 'Excellent text rendering in images.', isFree: false, contextLength: 0, pricing: { prompt: '$0.08/image', completion: '' } },
-    { id: 'bytedance/sdxl-lightning-4step', name: 'SDXL Lightning 4-Step', provider: 'replicate', description: 'Ultra-fast SDXL variant.', isFree: false, contextLength: 0, pricing: { prompt: '$0.001/image', completion: '' } },
-    { id: 'lucataco/realvisxl-v2.0', name: 'RealVisXL V2', provider: 'replicate', description: 'Photorealistic images.', isFree: false, contextLength: 0, pricing: { prompt: '$0.002/image', completion: '' } },
-    { id: 'ai-forever/kandinsky-2.2', name: 'Kandinsky 2.2', provider: 'replicate', description: 'Russian-native artistic model.', isFree: false, contextLength: 0, pricing: { prompt: '$0.002/image', completion: '' } },
+/**
+ * Конвертирует UnifiedModel из providerReplicateProvider в формат Model
+ */
+const convertUnifiedToModel = (unified: any): Model => {
+    const formatPricing = (pricing: any) => {
+        if (!pricing) return { prompt: '?', completion: '' };
+        if (pricing.perImage) return { prompt: `$${pricing.perImage}/image`, completion: '' };
+        if (pricing.videoPerSecond) return { prompt: `$${pricing.videoPerSecond}/sec`, completion: '' };
+        if (pricing.perMinute) return { prompt: `$${pricing.perMinute}/min`, completion: '' };
+        if (pricing.inputPerM || pricing.outputPerM) {
+            return { 
+                prompt: pricing.inputPerM ? `$${pricing.inputPerM}/1M` : '?',
+                completion: pricing.outputPerM ? `$${pricing.outputPerM}/1M` : ''
+            };
+        }
+        return { prompt: '?', completion: '' };
+    };
+
+    // Мапинг category -> modality
+    const categoryToModality = (cat?: string): string => {
+        switch (cat) {
+            case 'image': return 'text->image';
+            case 'video': return 'text->video';
+            case 'audio': return 'text->audio';
+            case 'tts': return 'text->speech';
+            case 'coding': return 'text->code';
+            case 'multimodal': return 'multi->multi';
+            default: return 'text->text';
+        }
+    };
+
+    return {
+        // Используем providerModelId для API (owner/name формат)
+        // raw.uniqueId хранит уникальный id для React keys
+        id: unified.providerModelId || unified.id,
+        name: unified.name,
+        provider: 'replicate' as ApiProvider,
+        description: unified.description || `${unified.category} model${unified.elo ? ` (ELO: ${unified.elo})` : ''}`,
+        contextLength: unified.contextLength || 0,
+        isFree: unified.isFree ?? false,
+        created: unified.createdAt || Date.now() / 1000,
+        pricing: formatPricing(unified.pricing),
+        modality: categoryToModality(unified.category),
+        category: unified.category || 'text',
+        // Сохраняем уникальный id и category для дедупликации
+        raw: { uniqueId: unified.id, category: unified.category },
+    };
+};
+
+// Загружаем модели из replicateProvider (включая лидерборд)
+let _replicateModelsCache: Model[] | null = null;
+const getReplicateFallbackModels = async (): Promise<Model[]> => {
+    if (_replicateModelsCache) return _replicateModelsCache;
+    
+    const result = await fetchReplicateFromProvider();
+    _replicateModelsCache = result.models.map(convertUnifiedToModel);
+    return _replicateModelsCache;
+};
+
+// Синхронный fallback для начальной загрузки (10 базовых моделей)
+const REPLICATE_FALLBACK_MODELS_SYNC: Model[] = [
+    { id: 'black-forest-labs/flux-schnell', name: 'FLUX.1 Schnell', provider: 'replicate', description: '🏆 AA — Fastest open model', isFree: false, contextLength: 0, pricing: { prompt: '$0.003/image', completion: '' } },
+    { id: 'black-forest-labs/flux-dev', name: 'FLUX.1 Dev', provider: 'replicate', description: '🏆 AA — Professional grade', isFree: false, contextLength: 0, pricing: { prompt: '$0.025/image', completion: '' } },
+    { id: 'black-forest-labs/flux-1.1-pro', name: 'FLUX 1.1 Pro', provider: 'replicate', description: '🏆 AA — Top quality', isFree: false, contextLength: 0, pricing: { prompt: '$0.04/image', completion: '' } },
+    { id: 'black-forest-labs/flux-2-max', name: 'FLUX.2 [max]', provider: 'replicate', description: '🏆 AA (ELO: 1211)', isFree: false, contextLength: 0, pricing: { prompt: '$0.025/image', completion: '' } },
+    { id: 'black-forest-labs/flux-2-pro', name: 'FLUX.2 [pro]', provider: 'replicate', description: '🏆 AA (ELO: 1201)', isFree: false, contextLength: 0, pricing: { prompt: '$0.02/image', completion: '' } },
+    { id: 'stability-ai/sdxl', name: 'Stable Diffusion XL', provider: 'replicate', description: 'Classic reliable model', isFree: false, contextLength: 0, pricing: { prompt: '$0.002/image', completion: '' } },
+    { id: 'recraft-ai/recraft-v3', name: 'Recraft V3', provider: 'replicate', description: '🏆 AA — Vector Art', isFree: false, contextLength: 0, pricing: { prompt: '$0.04/image', completion: '' } },
+    { id: 'ideogram-ai/ideogram-v3', name: 'Ideogram 3.0', provider: 'replicate', description: '🏆 AA — Text rendering', isFree: false, contextLength: 0, pricing: { prompt: '$0.03/image', completion: '' } },
+    { id: 'kuaishou/kolors-2.1', name: 'Kolors 2.1', provider: 'replicate', description: '🏆 AA (ELO: 1128)', isFree: false, contextLength: 0, pricing: { prompt: '$0.01/image', completion: '' } },
+    { id: 'minimax/hailuo-video-01', name: 'Hailuo T2V 01', provider: 'replicate', description: '🏆 AA — Video generation', isFree: false, contextLength: 0, pricing: { prompt: '$0.018/sec', completion: '' } },
 ];
 
 const OPENROUTER_FALLBACK_MODELS: Model[] = [
@@ -254,10 +314,18 @@ const fetchKieModels = async (apiKey: string, signal?: AbortSignal): Promise<Mod
 };
 
 /**
- * Fetch Replicate models from their API
- * Uses collections endpoint for curated image models
+ * Fetch Replicate models — использует данные из лидерборда AA
+ * + дополняет моделями из API Replicate (только если есть ключ)
  */
 const fetchReplicateModels = async (apiKey: string, signal?: AbortSignal): Promise<Model[]> => {
+    // Сначала получаем полный список из лидерборда (70+ моделей)
+    const leaderboardModels = await getReplicateFallbackModels();
+    
+    // Если нет API ключа — возвращаем только модели из лидерборда (без API запросов)
+    if (!apiKey) {
+        return leaderboardModels;
+    }
+    
     const proxyFetch = async (url: string) => {
         const targetUrl = `${PROXY_URL}${encodeURIComponent(url)}`;
         return fetch(targetUrl, {
@@ -270,14 +338,16 @@ const fetchReplicateModels = async (apiKey: string, signal?: AbortSignal): Promi
     };
 
     try {
-        // Fetch popular/featured models from collections
+        const leaderboardIds = new Set(leaderboardModels.map(m => m.id));
+        
+        // Дополняем моделями из API Replicate (коллекции)
         const collectionsToFetch = [
             'text-to-image',
             'image-to-image', 
             'image-upscalers'
         ];
         
-        const allModels: Model[] = [];
+        const apiModels: Model[] = [];
         const seenIds = new Set<string>();
 
         for (const collection of collectionsToFetch) {
@@ -288,7 +358,7 @@ const fetchReplicateModels = async (apiKey: string, signal?: AbortSignal): Promi
                 const data = await response.json();
                 const models = (data.models || []).map((m: any) => {
                     const id = `${m.owner}/${m.name}`;
-                    if (seenIds.has(id)) return null;
+                    if (seenIds.has(id) || leaderboardIds.has(id)) return null;
                     seenIds.add(id);
                     
                     return {
@@ -304,23 +374,17 @@ const fetchReplicateModels = async (apiKey: string, signal?: AbortSignal): Promi
                     };
                 }).filter(Boolean);
                 
-                allModels.push(...models);
+                apiModels.push(...models);
             } catch {
                 // Skip failed collection
             }
         }
 
-        // If we got models, merge with fallback (fallback first for priority)
-        if (allModels.length > 0) {
-            const fallbackIds = new Set(REPLICATE_FALLBACK_MODELS.map(m => m.id));
-            const uniqueNew = allModels.filter(m => !fallbackIds.has(m.id));
-            return [...REPLICATE_FALLBACK_MODELS, ...uniqueNew];
-        }
-        
-        return REPLICATE_FALLBACK_MODELS;
+        // Лидерборд модели первыми, потом остальные из API
+        return [...leaderboardModels, ...apiModels];
     } catch (e) {
-        console.warn('Replicate fetch failed, using fallback:', e);
-        return REPLICATE_FALLBACK_MODELS;
+        console.warn('Replicate fetch failed, using sync fallback:', e);
+        return REPLICATE_FALLBACK_MODELS_SYNC;
     }
 };
 
@@ -356,7 +420,7 @@ export const fetchModelsForProvider = async (
             case 'openai': return OPENAI_FALLBACK_MODELS;
             case 'openrouter': return OPENROUTER_FALLBACK_MODELS;
             case 'kie': return KIE_DEFAULT_MODELS;
-            case 'replicate': return REPLICATE_FALLBACK_MODELS;
+            case 'replicate': return REPLICATE_FALLBACK_MODELS_SYNC;
             default: return [];
         }
     }
@@ -443,7 +507,7 @@ export const getStaticModels = (provider: ApiProvider): Model[] => {
         case 'openai': return OPENAI_FALLBACK_MODELS;
         case 'openrouter': return OPENROUTER_FALLBACK_MODELS;
         case 'kie': return KIE_DEFAULT_MODELS;
-        case 'replicate': return REPLICATE_FALLBACK_MODELS;
+        case 'replicate': return REPLICATE_FALLBACK_MODELS_SYNC;
         default: return [];
     }
 };
@@ -456,5 +520,5 @@ export const getAllStaticModels = (): Model[] => [
     ...OPENAI_FALLBACK_MODELS,
     ...OPENROUTER_FALLBACK_MODELS,
     ...KIE_DEFAULT_MODELS,
-    ...REPLICATE_FALLBACK_MODELS
+    ...REPLICATE_FALLBACK_MODELS_SYNC
 ];

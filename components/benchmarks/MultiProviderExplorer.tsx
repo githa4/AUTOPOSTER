@@ -70,7 +70,6 @@ const DEFAULT_SORT_DIR: Record<SortKey, SortDir> = {
 
 const LS_ENABLED_PROVIDERS = 'autopost_enabled_providers';
 const LS_API_KEYS = 'autopost_provider_api_keys';
-const LS_FAVORITE_MODELS = 'autopost_favorite_benchmark_models';
 const LS_COLLAPSED_FAMILIES = 'autopost_collapsed_model_families';
 const LS_DETAILS_WIDTH = 'autopost_multi_details_width_px';
 const LS_SHOW_GROUPS = 'autopost_show_model_groups';
@@ -530,7 +529,7 @@ const ProviderSettingsRow: React.FC<{
 };
 
 export const MultiProviderExplorer: React.FC = () => {
-  const { t } = useAppContext();
+  const { t, favoriteModelIds, toggleFavoriteModel } = useAppContext();
 
   // Состояние провайдеров
   const [enabledProviders, setEnabledProviders] = useState<string[]>(() => {
@@ -662,34 +661,13 @@ export const MultiProviderExplorer: React.FC = () => {
     } catch {}
   }, [collapsedFamilies]);
 
-  // Избранные модели
-  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(() => {
-    try {
-      const raw = localStorage.getItem(LS_FAVORITE_MODELS);
-      if (raw) return new Set(JSON.parse(raw));
-    } catch {}
-    return new Set();
-  });
+  // Избранные модели — используем AppContext
+  const favoriteIds = useMemo(() => new Set(favoriteModelIds), [favoriteModelIds]);
 
   const toggleFavorite = (modelId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setFavoriteIds(prev => {
-      const next = new Set(prev);
-      if (next.has(modelId)) {
-        next.delete(modelId);
-      } else {
-        next.add(modelId);
-      }
-      return next;
-    });
+    toggleFavoriteModel(modelId);
   };
-
-  // Сохранение избранного в localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem(LS_FAVORITE_MODELS, JSON.stringify([...favoriteIds]));
-    } catch {}
-  }, [favoriteIds]);
 
   // Сохранение настроек
   useEffect(() => {
@@ -951,162 +929,172 @@ export const MultiProviderExplorer: React.FC = () => {
         </div>
 
         {/* Вкладки провайдеров */}
-        <div className="flex flex-wrap gap-2 mb-4">
+        <div className="flex flex-wrap gap-2 mb-6 border-b border-[#252526] pb-4">
           {providerTabs.map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`px-3 py-1.5 rounded text-xs font-bold flex items-center gap-2 transition-all border ${
+              className={`px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2 transition-all border ${
                 activeTab === tab.id
                   ? tab.isUnofficial
                     ? 'bg-yellow-900/30 text-yellow-200 border-yellow-500/30'
-                    : 'bg-[#37373d] text-white border-[#3e3e42]'
+                    : 'bg-white text-black border-white'
                   : tab.isUnofficial
                     ? 'bg-[#252526] text-yellow-200/60 border-yellow-500/20 hover:text-yellow-200'
-                    : 'bg-[#252526] text-[#858585] border-[#3e3e42] hover:text-[#ccc]'
+                    : 'bg-[#252526] text-[#858585] border-[#3e3e42] hover:text-[#ccc] hover:border-[#555]'
               }`}
             >
               {tab.isUnofficial && <AlertTriangle className="w-3 h-3" />}
               {tab.label}
-              <span className="text-[10px] opacity-60">({tab.count})</span>
+              <span className={`text-[10px] ${activeTab === tab.id ? 'opacity-60' : 'opacity-40'}`}>
+                {tab.count}
+              </span>
             </button>
           ))}
         </div>
 
-        {/* Фильтры по категориям */}
-        <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
-          <div className="flex flex-wrap gap-2">
-            {categories.map(({ key, icon: Icon, label }) => (
-              <button
-                key={key}
-                onClick={() => setCategory(key)}
-                className={`px-3 py-1.5 rounded text-xs font-bold flex items-center gap-2 transition-all border ${
-                  category === key
-                    ? 'bg-[#37373d] text-white border-[#3e3e42]'
-                    : 'bg-[#252526] text-[#858585] border-[#3e3e42] hover:text-[#ccc]'
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                {label}
-              </button>
-            ))}
-          </div>
+        {/* Панель инструментов */}
+        <div className="flex flex-col gap-4">
+          {/* Верхняя строка: Категории и Поиск */}
+          <div className="flex flex-col xl:flex-row gap-4 justify-between xl:items-center">
+            <div className="flex items-center gap-2 overflow-x-auto pb-2 xl:pb-0 no-scrollbar">
+              {categories.map(({ key, icon: Icon, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setCategory(key)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-2 transition-all border whitespace-nowrap ${
+                    category === key
+                      ? 'bg-[#37373d] text-white border-[#555]'
+                      : 'bg-transparent text-[#858585] border-transparent hover:bg-[#252526] hover:text-[#ccc]'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {label}
+                </button>
+              ))}
+            </div>
 
-          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-            <div className="relative w-full sm:w-72">
+            <div className="relative w-full xl:w-72 shrink-0">
               <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-[#666]" />
               <input
                 type="text"
                 placeholder="Поиск по моделям..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="w-full bg-[#252526] border border-[#3e3e42] rounded px-3 py-2 pl-9 text-xs text-white outline-none focus:border-[#007acc]"
+                className="w-full bg-[#1e1e1e] border border-[#3e3e42] rounded px-3 py-2 pl-9 text-xs text-white outline-none focus:border-[#007acc] focus:bg-[#252526] transition-colors"
               />
             </div>
+          </div>
 
-            <button
-              onClick={() => setOnlyFavorites(v => !v)}
-              className={`px-3 py-2 rounded border text-xs font-bold transition-colors flex items-center gap-1.5 ${
-                onlyFavorites
-                  ? 'bg-yellow-900/20 text-yellow-200 border-yellow-500/30'
-                  : 'bg-[#252526] text-[#ccc] border-[#3e3e42] hover:bg-[#333]'
-              }`}
-              title={`Показать только избранные (${favoriteIds.size})`}
-            >
-              <Star className={`w-3.5 h-3.5 ${onlyFavorites ? 'fill-yellow-400' : ''}`} />
-              {favoriteIds.size > 0 && <span>{favoriteIds.size}</span>}
-            </button>
-
-            <button
-              onClick={() => setSortFavoritesTop(v => !v)}
-              className={`px-3 py-2 rounded border text-xs font-bold transition-colors flex items-center gap-1.5 ${
-                sortFavoritesTop
-                  ? 'bg-blue-900/20 text-blue-200 border-blue-500/30'
-                  : 'bg-[#252526] text-[#ccc] border-[#3e3e42] hover:bg-[#333]'
-              }`}
-              title="Сортировать избранные вверху списка"
-            >
-              ⬆ Вверху
-            </button>
-
-            <button
-              onClick={() => setOnlyFree(v => !v)}
-              className={`px-3 py-2 rounded border text-xs font-bold transition-colors ${
-                onlyFree
-                  ? 'bg-green-900/20 text-green-200 border-green-500/30'
-                  : 'bg-[#252526] text-[#ccc] border-[#3e3e42] hover:bg-[#333]'
-              }`}
-            >
-              Бесплатные
-            </button>
-
-            {activeTab === 'all' && (
+          {/* Нижняя строка: Фильтры и Сортировка */}
+          <div className="flex flex-col sm:flex-row gap-3 justify-between sm:items-center p-3 bg-[#252526]/50 rounded-lg border border-[#252526]">
+            <div className="flex flex-wrap gap-2">
               <button
-                onClick={() => setOnlyCheapest(v => !v)}
-                className={`px-3 py-2 rounded border text-xs font-bold transition-colors flex items-center gap-1 ${
-                  onlyCheapest
+                onClick={() => setOnlyFavorites(v => !v)}
+                className={`px-3 py-2 rounded border text-xs font-bold transition-colors flex items-center gap-1.5 ${
+                  onlyFavorites
+                    ? 'bg-yellow-900/20 text-yellow-200 border-yellow-500/30'
+                    : 'bg-[#252526] text-[#ccc] border-[#3e3e42] hover:bg-[#333]'
+                }`}
+                title={`Показать только избранные (${favoriteIds.size})`}
+              >
+                <Star className={`w-3.5 h-3.5 ${onlyFavorites ? 'fill-yellow-400' : ''}`} />
+                {favoriteIds.size > 0 && <span>{favoriteIds.size}</span>}
+              </button>
+
+              <button
+                onClick={() => setSortFavoritesTop(v => !v)}
+                className={`px-3 py-2 rounded border text-xs font-bold transition-colors flex items-center gap-1.5 ${
+                  sortFavoritesTop
+                    ? 'bg-blue-900/20 text-blue-200 border-blue-500/30'
+                    : 'bg-[#252526] text-[#ccc] border-[#3e3e42] hover:bg-[#333]'
+                }`}
+                title="Сортировать избранные вверху списка"
+              >
+                ⬆ Вверху
+              </button>
+
+              <button
+                onClick={() => setOnlyFree(v => !v)}
+                className={`px-3 py-2 rounded border text-xs font-bold transition-colors ${
+                  onlyFree
                     ? 'bg-green-900/20 text-green-200 border-green-500/30'
                     : 'bg-[#252526] text-[#ccc] border-[#3e3e42] hover:bg-[#333]'
                 }`}
               >
-                <DollarSign className="w-3 h-3" />
-                Лучшие цены
+                Бесплатные
               </button>
-            )}
 
-            <select
-              value={sortKey}
-              onChange={e => {
-                const nextKey = e.target.value as SortKey;
-                setSortKey(nextKey);
-                setSortDir(DEFAULT_SORT_DIR[nextKey]);
-              }}
-              className="bg-[#252526] border border-[#3e3e42] rounded px-3 py-2 text-xs text-white outline-none focus:border-[#007acc]"
-            >
-              <option value="elo">🏆 Рейтинг (ELO)</option>
-              <option value="priceIn">Цена (вход)</option>
-              <option value="priceOut">Цена (выход)</option>
-              <option value="name">Название</option>
-              <option value="provider">Провайдер</option>
-              <option value="category">Тип</option>
-              <option value="context">Контекст</option>
-              <option value="maxOutput">Выход</option>
-              <option value="modality">Модальность</option>
-              <option value="created">Дата</option>
-            </select>
-
-            {/* Кнопки группировки */}
-            <div className="flex gap-1">
-              <button
-                onClick={() => setShowGroups(v => !v)}
-                className={`p-2 border rounded transition-colors flex items-center gap-1 text-xs ${
-                  showGroups
-                    ? 'bg-blue-900/20 text-blue-200 border-blue-500/30'
-                    : 'bg-[#252526] text-[#ccc] border-[#3e3e42] hover:bg-[#333]'
-                }`}
-                title={showGroups ? 'Показывать плоский список' : 'Группировать по семействам'}
-              >
-                {showGroups ? <FolderOpen className="w-4 h-4" /> : <FolderClosed className="w-4 h-4" />}
-                <span className="hidden sm:inline">Группы</span>
-              </button>
-              {showGroups && (
-                <>
-                  <button
-                    onClick={collapseAll}
-                    className="p-2 bg-[#252526] hover:bg-[#333] border border-[#3e3e42] rounded text-[#ccc] transition-colors"
-                    title="Свернуть все группы"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={expandAll}
-                    className="p-2 bg-[#252526] hover:bg-[#333] border border-[#3e3e42] rounded text-[#ccc] transition-colors"
-                    title="Развернуть все группы"
-                  >
-                    <ChevronDown className="w-4 h-4" />
-                  </button>
-                </>
+              {activeTab === 'all' && (
+                <button
+                  onClick={() => setOnlyCheapest(v => !v)}
+                  className={`px-3 py-2 rounded border text-xs font-bold transition-colors flex items-center gap-1 ${
+                    onlyCheapest
+                      ? 'bg-green-900/20 text-green-200 border-green-500/30'
+                      : 'bg-[#252526] text-[#ccc] border-[#3e3e42] hover:bg-[#333]'
+                  }`}
+                >
+                  <DollarSign className="w-3 h-3" />
+                  Лучшие цены
+                </button>
               )}
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <select
+                value={sortKey}
+                onChange={e => {
+                  const nextKey = e.target.value as SortKey;
+                  setSortKey(nextKey);
+                  setSortDir(DEFAULT_SORT_DIR[nextKey]);
+                }}
+                className="bg-[#252526] border border-[#3e3e42] rounded px-3 py-2 text-xs text-white outline-none focus:border-[#007acc] flex-1 sm:flex-none"
+              >
+                <option value="elo">🏆 Рейтинг (ELO)</option>
+                <option value="priceIn">Цена (вход)</option>
+                <option value="priceOut">Цена (выход)</option>
+                <option value="name">Название</option>
+                <option value="provider">Провайдер</option>
+                <option value="category">Тип</option>
+                <option value="context">Контекст</option>
+                <option value="maxOutput">Выход</option>
+                <option value="modality">Модальность</option>
+                <option value="created">Дата</option>
+              </select>
+
+              {/* Кнопки группировки */}
+              <div className="flex gap-1">
+                <button
+                  onClick={() => setShowGroups(v => !v)}
+                  className={`p-2 border rounded transition-colors flex items-center gap-1 text-xs ${
+                    showGroups
+                      ? 'bg-blue-900/20 text-blue-200 border-blue-500/30'
+                      : 'bg-[#252526] text-[#ccc] border-[#3e3e42] hover:bg-[#333]'
+                  }`}
+                  title={showGroups ? 'Показывать плоский список' : 'Группировать по семействам'}
+                >
+                  {showGroups ? <FolderOpen className="w-4 h-4" /> : <FolderClosed className="w-4 h-4" />}
+                  <span className="hidden sm:inline">Группы</span>
+                </button>
+                {showGroups && (
+                  <>
+                    <button
+                      onClick={collapseAll}
+                      className="p-2 bg-[#252526] hover:bg-[#333] border border-[#3e3e42] rounded text-[#ccc] transition-colors"
+                      title="Свернуть все группы"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={expandAll}
+                      className="p-2 bg-[#252526] hover:bg-[#333] border border-[#3e3e42] rounded text-[#ccc] transition-colors"
+                      title="Развернуть все группы"
+                    >
+                      <ChevronDown className="w-4 h-4" />
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>

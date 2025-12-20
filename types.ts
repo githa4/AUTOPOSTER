@@ -168,7 +168,9 @@ export interface Model {
     completion: string;
   };
   isFree?: boolean;
-  created?: number; 
+  created?: number;
+  modality?: string; // e.g. 'text->text', 'text->image', 'text->video'
+  category?: string; // e.g. 'text', 'image', 'video', 'audio'
   supportedInputs?: string[];
   specs?: ModelSpecs;
   raw?: any; 
