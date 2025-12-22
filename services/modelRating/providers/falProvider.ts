@@ -6,10 +6,31 @@
  * 20 Image + 20 Video моделей
  */
 
-import { UnifiedModel, ProviderModelsResult } from '../types';
+import { UnifiedModel, ProviderModelsResult, UnifiedPricing } from '../types';
+
+type CuratedCategory = UnifiedModel['category'] | 'tts';
+type CuratedModel = Omit<UnifiedModel, 'category' | 'pricing'> & {
+  category: CuratedCategory;
+  pricing: UnifiedPricing & { perImage?: number; perMinute?: number };
+};
+
+const normalizeCuratedModels = (models: CuratedModel[]): UnifiedModel[] =>
+  models.map((model) => {
+    const { perImage, perMinute, ...pricing } = model.pricing;
+
+    return {
+      ...model,
+      category: model.category === 'tts' ? 'audio' : model.category,
+      pricing: {
+        ...pricing,
+        imagePerUnit: pricing.imagePerUnit ?? perImage,
+        audioPerMinute: pricing.audioPerMinute ?? perMinute,
+      },
+    };
+  });
 
 // ВСЕ 40 Image + Video моделей из LEADERBOARD
-const CURATED_MODELS: UnifiedModel[] = [
+const CURATED_MODELS: CuratedModel[] = [
   // ==================== IMAGE (🎨) - 20 моделей ====================
   { id: 'fal:gpt-image-1.5', name: 'GPT Image 1.5', providerId: 'fal', providerModelId: 'gpt-image-1-5', category: 'image', elo: 1261, pricing: { perImage: 0.02 } },
   { id: 'fal:nano-banana-pro', name: 'Nano Banana Pro', providerId: 'fal', providerModelId: 'nano-banana-pro', category: 'image', elo: 1261, pricing: { perImage: 0.015 } },
@@ -58,7 +79,7 @@ const CURATED_MODELS: UnifiedModel[] = [
 export const fetchFalModels = async (_apiKey?: string): Promise<ProviderModelsResult> => {
   return {
     providerId: 'fal',
-    models: CURATED_MODELS,
+    models: normalizeCuratedModels(CURATED_MODELS),
     lastUpdated: Date.now(),
   };
 };

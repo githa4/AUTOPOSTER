@@ -47,6 +47,9 @@ export interface CanonicalModel {
   
   /** Размер контекста (для LLM) */
   contextLength?: number;
+
+  /** ELO рейтинг (из Artificial Analysis) */
+  elo?: number;
   
   /** Максимум выходных токенов */
   maxOutputTokens?: number;

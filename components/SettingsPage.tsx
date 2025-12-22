@@ -5,7 +5,6 @@ import {
     DEFAULT_TEXT_SYSTEM_PROMPT,
     DEFAULT_YOUTUBE_CONTEXT_PROMPT,
     generatePostImage,
-    getAvailableModels,
     testTextGeneration,
 } from '../services/geminiService';
 import { testTelegramConnection } from '../services/telegramService';
@@ -14,6 +13,7 @@ import { fetchModelsForProvider, getCacheStatus, clearModelCache, getStaticModel
 import { ApiProvider, Model, ImageProvider, IntegrationProvider, Integration, ApiKeyEntry } from '../types';
 import { supabase } from '../lib/supabaseClient'; 
 import { ModelsTableCore } from './ModelsTableCore';
+import { GEMINI_IMAGE_MODELS } from './settings/modelConstants';
 // Add missing Cpu and HardDrive imports
 import { 
     Save, Server, RefreshCw, MessageSquare, 
@@ -21,11 +21,6 @@ import {
     ChevronDown, X, CheckCircle2, AlertCircle, Plus, Share2, Facebook, Trash2, Edit3, Star, Brain, Image as ImageIcon, Palette, Youtube, LayoutGrid, Clock, Coins, Hash as HashIcon, Eye,
     Cpu, HardDrive
 } from 'lucide-react';
-
-const GEMINI_IMAGE_MODELS = [
-  { id: 'gemini-2.5-flash-image', name: 'Gemini 2.5 Flash Image (Standard)', description: "Fast, efficient image generation." },
-  { id: 'gemini-3-pro-image-preview', name: 'Gemini 3.0 Pro Image (High Quality)', description: "High-fidelity, text-following image generation." },
-];
 
 // REPLICATE_IMAGE_MODELS теперь загружаются динамически из modelRegistryService
 

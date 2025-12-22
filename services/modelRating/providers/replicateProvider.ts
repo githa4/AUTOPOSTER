@@ -8,11 +8,32 @@
  * Модели с пометкой inLeaderboard: true находятся в топе рейтинга AA
  */
 
-import { UnifiedModel, ProviderModelsResult } from '../types';
+import { UnifiedModel, ProviderModelsResult, UnifiedPricing } from '../types';
 import { findInLeaderboard } from '../leaderboardData';
 
+type CuratedCategory = UnifiedModel['category'] | 'tts';
+type CuratedModel = Omit<UnifiedModel, 'category' | 'pricing'> & {
+  category: CuratedCategory;
+  pricing: UnifiedPricing & { perImage?: number; perMinute?: number };
+};
+
+const normalizeCuratedModels = (models: CuratedModel[]): UnifiedModel[] =>
+  models.map((model) => {
+    const { perImage, perMinute, ...pricing } = model.pricing;
+
+    return {
+      ...model,
+      category: model.category === 'tts' ? 'audio' : model.category,
+      pricing: {
+        ...pricing,
+        imagePerUnit: pricing.imagePerUnit ?? perImage,
+        audioPerMinute: pricing.audioPerMinute ?? perMinute,
+      },
+    };
+  });
+
 // ВСЕ модели из LEADERBOARD доступные на Replicate
-const CURATED_MODELS: UnifiedModel[] = [
+const CURATED_MODELS: CuratedModel[] = [
   // ==================== LLM / TEXT (📝) — open source ====================
   { id: 'replicate:deepseek-v3.2-exp', name: 'DeepSeek V3.2 Exp', providerId: 'replicate', providerModelId: 'deepseek-ai/deepseek-v3.2-exp', category: 'text', elo: 1423, contextLength: 64000, pricing: { inputPerM: 0.05, outputPerM: 0.15 } },
   { id: 'replicate:deepseek-v3.2-thinking', name: 'DeepSeek V3.2 Thinking', providerId: 'replicate', providerModelId: 'deepseek-ai/deepseek-v3.2-thinking', category: 'text', elo: 1422, contextLength: 64000, pricing: { inputPerM: 0.05, outputPerM: 0.15 } },
@@ -106,8 +127,10 @@ const enrichWithLeaderboardData = (models: UnifiedModel[]): UnifiedModel[] => {
 };
 
 export const fetchReplicateModels = async (_apiKey?: string): Promise<ProviderModelsResult> => {
+  const normalizedModels = normalizeCuratedModels(CURATED_MODELS);
+
   // Обогащаем модели данными из лидерборда
-  const enrichedModels = enrichWithLeaderboardData(CURATED_MODELS);
+  const enrichedModels = enrichWithLeaderboardData(normalizedModels);
   
   return {
     providerId: 'replicate',

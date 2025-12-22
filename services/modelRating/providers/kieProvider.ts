@@ -6,10 +6,31 @@
  * 10 Music + 14 TTS + 20 Video + 20 Image = 64 модели
  */
 
-import { UnifiedModel, ProviderModelsResult } from '../types';
+import { UnifiedModel, ProviderModelsResult, UnifiedPricing } from '../types';
+
+type CuratedCategory = UnifiedModel['category'] | 'tts';
+type CuratedModel = Omit<UnifiedModel, 'category' | 'pricing'> & {
+  category: CuratedCategory;
+  pricing: UnifiedPricing & { perImage?: number; perMinute?: number };
+};
+
+const normalizeCuratedModels = (models: CuratedModel[]): UnifiedModel[] =>
+  models.map((model) => {
+    const { perImage, perMinute, ...pricing } = model.pricing;
+
+    return {
+      ...model,
+      category: model.category === 'tts' ? 'audio' : model.category,
+      pricing: {
+        ...pricing,
+        imagePerUnit: pricing.imagePerUnit ?? perImage,
+        audioPerMinute: pricing.audioPerMinute ?? perMinute,
+      },
+    };
+  });
 
 // ВСЕ модели из LEADERBOARD
-const CURATED_MODELS: UnifiedModel[] = [
+const CURATED_MODELS: CuratedModel[] = [
   // ==================== MUSIC (🎵) - 10 моделей ====================
   { id: 'kie:suno-v4.5', name: 'Suno V4.5', providerId: 'kie', providerModelId: 'suno-v4-5', category: 'audio', elo: 1109, pricing: { perMinute: 0.05 } },
   { id: 'kie:eleven-music', name: 'Eleven Music', providerId: 'kie', providerModelId: 'eleven-music', category: 'audio', elo: 1078, pricing: { perMinute: 0.08 } },
@@ -86,7 +107,7 @@ const CURATED_MODELS: UnifiedModel[] = [
 export const fetchKieModels = async (_apiKey?: string): Promise<ProviderModelsResult> => {
   return {
     providerId: 'kie',
-    models: CURATED_MODELS,
+    models: normalizeCuratedModels(CURATED_MODELS),
     lastUpdated: Date.now(),
   };
 };
